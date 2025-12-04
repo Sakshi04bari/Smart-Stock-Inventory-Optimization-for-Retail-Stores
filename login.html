@@ -1,0 +1,75 @@
+<!-- templates/login.html -->
+{% extends "layout.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h4 class="card-title mb-3">Sign in</h4>
+        <form method="post">
+          <div class="mb-2">
+            <label class="form-label">Role</label>
+            <select name="role" id="role" class="form-select">
+              <option value="manager">Manager (Store)</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">Username</label>
+            <input name="username" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Password</label>
+            <input name="password" type="password" class="form-control" required>
+          </div>
+
+          <div id="managerFields" class="mb-2">
+            <label class="form-label">Select City</label>
+            <select id="citySelect" name="city" class="form-select">
+              <option value="">-- choose city --</option>
+              {% for c in cities %}
+                <option value="{{ c.city_name }}">{{ c.city_name }}</option>
+              {% endfor %}
+            </select>
+            <label class="form-label mt-2">Select Branch</label>
+            <select id="branchSelect" name="branch" class="form-select">
+              <option value="">-- choose branch --</option>
+            </select>
+          </div>
+
+          <button class="btn btn-primary mt-3" type="submit">Login</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const role = document.getElementById("role");
+  const managerFields = document.getElementById("managerFields");
+  function toggleFields() {
+    managerFields.style.display = role.value === "manager" ? "block" : "none";
+  }
+  role.addEventListener("change", toggleFields);
+  toggleFields();
+
+  // Fetch branches when city changes
+  const citySelect = document.getElementById("citySelect");
+  const branchSelect = document.getElementById("branchSelect");
+  citySelect?.addEventListener("change", async () => {
+    const city = citySelect.value;
+    branchSelect.innerHTML = '<option>Loading...</option>';
+    const res = await fetch(`/get_branches_for_city?city=${encodeURIComponent(city)}`);
+    const data = await res.json();
+    branchSelect.innerHTML = '<option value="">-- choose branch --</option>';
+    data.forEach(b => {
+      const opt = document.createElement("option");
+      opt.value = b.branch_name;
+      opt.textContent = `${b.branch_name} (${b.company_name})`;
+      branchSelect.appendChild(opt);
+    });
+  });
+</script>
+{% endblock %}
