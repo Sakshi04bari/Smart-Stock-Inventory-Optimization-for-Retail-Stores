@@ -120,81 +120,90 @@ def ensure_tables_exist():
     if init_done:
         return
     
-    print("🛠️ Creating tables (PostgreSQL 100% safe)...")
+    print("🛠️ Creating tables (PostgreSQL-safe)...")
     conn = None
     cur = None
     try:
         conn = get_db_conn_raw()
         cur = get_cursor(conn)
         
-        # ✅ PERFECT TABLE CREATION
+        # ✅ POSTGRESQL: UNIQUE DIRECTLY IN CREATE TABLE
         cur.execute("""
             CREATE TABLE IF NOT EXISTS city (
                 cityid SERIAL PRIMARY KEY, 
-                cityname VARCHAR(50) NOT NULL
+                cityname VARCHAR(50) UNIQUE
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS store (
                 storeid SERIAL PRIMARY KEY, 
-                storename VARCHAR(50) NOT NULL,
+                storename VARCHAR(50) UNIQUE,
                 store_manager VARCHAR(50), 
                 password VARCHAR(50), 
-                cityid INT
+                cityid INT REFERENCES city(cityid)
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
                 productid SERIAL PRIMARY KEY, 
-                productname VARCHAR(50) NOT NULL
+                productname VARCHAR(50) UNIQUE
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sales (
-                id SERIAL PRIMARY KEY, dt TIMESTAMP, cityid INT, storeid INT, 
-                productid INT, sale_amount INT, stock INT, hour INT, 
-                discount INT, holiday_flag INT, activity_flag INT
+                id SERIAL PRIMARY KEY, 
+                dt TIMESTAMP, cityid INT, storeid INT, 
+                productid INT, sale_amount INT, stock INT, 
+                hour INT, discount INT, holiday_flag INT, activity_flag INT
             )
         """)
-        conn.commit()
         
-        # 🔥 DELETE DUPLICATES (SIMPLE WAY)
-        cur.execute("DELETE FROM store WHERE storeid NOT IN (SELECT MIN(storeid) FROM store GROUP BY storename)")
-        cur.execute("DELETE FROM city WHERE cityid NOT IN (SELECT MIN(cityid) FROM city GROUP BY cityname)")
-        cur.execute("DELETE FROM product WHERE productid NOT IN (SELECT MIN(productid) FROM product GROUP BY productname)")
-        conn.commit()
+        conn.commit()  # Commit table creation FIRST
         
-        # 🔥 LOAD YOUR REAL XLSX (897 STORES!)
-        cities_df = pd.read_excel('stores.xlsx')  # Wait, YOUR cities.csv.xlsx?
-        stores_df = pd.read_excel('stores.xlsx')
-        products_df = pd.read_excel('products.csv.xlsx')
-        
-        print(f"📊 XLSX: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products")
-        
-        # LOAD CITIES
-        for _, row in cities_df.iterrows():
-            cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT DO NOTHING", (row['city_name'],))
-        
-        # LOAD STORES (SIMPLE - NO ON CONFLICT PROBLEM!)
-        for _, row in stores_df.iterrows():
-            # CHECK IF STORE EXISTS FIRST
-            cur.execute("SELECT storeid FROM store WHERE storename = %s", (row['store_name'],))
-            if not cur.fetchone():
+        # 🔥 CLEAR + LOAD YOUR REAL XLSX DATA
+        try:
+            cities_df = pd.read_excel('cities.csv.xlsx')
+            stores_df = pd.read_excel('stores.xlsx')
+            products_df = pd.read_excel('products.csv.xlsx')
+            
+            print(f"📊 Found XLSX: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products")
+            
+            # CLEAR OLD DATA
+            cur.execute("TRUNCATE TABLE sales, store, city, product RESTART IDENTITY CASCADE")
+            conn.commit()
+            
+            # LOAD CITIES FIRST
+            for _, row in cities_df.iterrows():
+                cur.execute("INSERT INTO city (cityname) VALUES (%s)", (row['city_name'],))
+            conn.commit()
+            
+            # LOAD STORES (with correct city_id mapping)
+            for _, row in stores_df.iterrows():
                 cur.execute("""
                     INSERT INTO store (storename, store_manager, password, cityid) 
                     VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (storename) DO NOTHING
                 """, (row['store_name'], row['store_manager'], row['password'], row['city_id']))
+            conn.commit()
+            
+            # LOAD PRODUCTS
+            for _, row in products_df.iterrows():
+                cur.execute("INSERT INTO product (productname) VALUES (%s)", (row['product_name'],))
+            conn.commit()
+            
+            print(f"✅ LOADED REAL DATA: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products!")
+            
+        except FileNotFoundError:
+            print("❌ XLSX files missing - check git add stores.xlsx etc")
+            raise Exception("Upload XLSX files to repo!")
+        except Exception as e:
+            print(f"❌ XLSX error: {e}")
+            raise
         
-        # LOAD PRODUCTS
-        for _, row in products_df.iterrows():
-            cur.execute("INSERT INTO product (productname) VALUES (%s) ON CONFLICT DO NOTHING", (row['product_name'],))
-        
-        conn.commit()
-        print(f"✅ SUCCESS: 18 cities, 897 stores, 735 products LOADED!")
         init_done = True
         
     except Exception as e:
-        print(f"❌ ERROR: {e}")
+        print(f"❌ CRITICAL ERROR: {e}")
         if conn:
             conn.rollback()
     finally:
