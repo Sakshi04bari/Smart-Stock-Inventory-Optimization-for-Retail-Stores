@@ -128,12 +128,15 @@ def ensure_tables_exist():
         cur = get_cursor(conn)
         
         # ✅ TABLES WITH UNIQUE CONSTRAINTS
+        # ✅ TABLE BY TABLE WITH COMMITS (PostgreSQL-safe)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS city (
                 cityid SERIAL PRIMARY KEY, 
                 cityname VARCHAR(50) NOT NULL
             )
         """)
+        conn.commit()  # 🔥 CRITICAL
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS store (
                 storeid SERIAL PRIMARY KEY, 
@@ -143,16 +146,20 @@ def ensure_tables_exist():
                 cityid INT REFERENCES city(cityid)
             )
         """)
+        conn.commit()  # 🔥 CRITICAL
+
+        # 🔥 CONSTRAINT with transaction isolation
         try:
             cur.execute("""
                 ALTER TABLE store 
                 ADD CONSTRAINT store_storename_unique 
                 UNIQUE (storename)
             """)
+            conn.commit()  # 🔥 COMMIT constraint separately
             print("✅ UNIQUE constraint added")
-        except:
-            print("ℹ️ UNIQUE constraint already exists")
-
+        except Exception as e:
+            conn.rollback()  # 🔥 ROLLBACK constraint error only
+            print(f"ℹ️ UNIQUE constraint: {e}")
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
@@ -160,6 +167,8 @@ def ensure_tables_exist():
                 productname VARCHAR(50) NOT NULL UNIQUE
             )
         """)
+        conn.commit()
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sales (
                 id SERIAL PRIMARY KEY, 
@@ -169,6 +178,7 @@ def ensure_tables_exist():
             )
         """)
         conn.commit()
+
         
         # 🔥 LOAD YOUR XLSX DATA
         try:
