@@ -170,7 +170,7 @@ def ensure_tables_exist():
             stores_df = pd.read_excel('stores.xlsx')
             for _, row in stores_df.iterrows():
                 cur.execute("""
-                    INSERT INTO store (storename, store_manager, password, city_id) 
+                    INSERT INTO store (storename, store_manager, password, cityid) 
                     VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING
                 """, (row['store_name'], str(row.iloc[1]), str(row.iloc[2]), row['city_id']))
             
