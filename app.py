@@ -1,4 +1,4 @@
-# app.py - COMPLETE SmartStock Dashboard (MY-STORE PAGE ✅ + ALL FIXES)
+# app.py - COMPLETE SmartStock Dashboard (MY-STORE PAGE ✅ + POSTGRESQL FIX)
 import threading, time, random
 from datetime import datetime, timedelta
 from functools import wraps
@@ -11,6 +11,8 @@ from sqlalchemy.engine import URL
 import pandas as pd
 import mysql.connector
 import xgboost as xgb
+import psycopg2  # 🔥 POSTGRESQL SUPPORT
+from urllib.parse import urlparse   # 🔥 POSTGRESQL URL PARSER
 
 # ----------------------------
 # Config - DEPLOYMENT READY
@@ -37,10 +39,25 @@ engine_url = URL.create(
 )
 engine = create_engine(engine_url, pool_pre_ping=True)
 
+# 🔥 FIXED: PostgreSQL + MySQL Support (ONLY CHANGE)
 def get_db_conn_raw():
-    return mysql.connector.connect(
-        host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME
-    )
+    db_url = os.getenv('DATABASE_URL')
+    if db_url and 'postgres' in db_url:
+        # Render PostgreSQL
+        parsed = urlparse(db_url)
+        return psycopg2.connect(
+            host=parsed.hostname,
+            port=parsed.port or 5432,
+            user=parsed.username,
+            password=parsed.password,
+            database=parsed.path[1:]
+        )
+    else:
+        # Local MySQL
+        return mysql.connector.connect(
+            host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME
+        )
+
 
 # ----------------------------
 # Flask + Login (FIXED)
@@ -506,5 +523,6 @@ if __name__=="__main__":
     print("🔓 ADMIN: admin / admin123 → Sees ALL stores + /admin/stores (897 stores)")
     print("🔓 MANAGER: Ahm-Store 1-mgr / Ahm.Store@1 → /my-store (THEIR STORE ONLY)")
     print("✅ /my-store page added - Uses my_store.html (no conflicts!)")
+    print("✅ PostgreSQL support added for Render!")
     app.run(host=host, port=port, debug=debug)
 
