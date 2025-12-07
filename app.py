@@ -111,14 +111,6 @@ def load_user(user_id):
 # Live Alerts Storage
 # ----------------------------
 all_alerts = []
-import atexit
-def init_startup():
-    ensure_tables_exist()
-    t = threading.Thread(target=live_updater_background, daemon=True)
-    t.start()
-    print("🚀 Live updater started!")
-atexit.register(init_startup)
-
 # ----------------------------
 # 🔥 LIVE UPDATER (15s + AUTO-CREATE TABLES)
 # ----------------------------
@@ -158,6 +150,8 @@ def ensure_tables_exist():
                 discount INT, holiday_flag INT, activity_flag INT
             )
         """)
+        cur.execute("ALTER TABLE city ADD CONSTRAINT IF NOT EXISTS unique_city UNIQUE(cityname)")
+        cur.execute("ALTER TABLE store ADD CONSTRAINT IF NOT EXISTS unique_store UNIQUE(storename)")
         
         # 🔥 LOAD YOUR REAL DATA (YOUR column names)
         try:
@@ -166,13 +160,15 @@ def ensure_tables_exist():
             for _, row in cities_df.iterrows():
                 cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT DO NOTHING", (row['city_name'],))
             
-            # Stores XLSX (store_name, ?, ?, city_id)
+            # Stores XLSX (A=store_id,B=city_id,C=store_name,D=city_name,E=store_manager,F=password)
             stores_df = pd.read_excel('stores.xlsx')
             for _, row in stores_df.iterrows():
                 cur.execute("""
                     INSERT INTO store (storename, store_manager, password, cityid) 
-                    VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING
-                """, (row['store_name'], str(row.iloc[1]), str(row.iloc[2]), row['city_id']))
+                    VALUES (%s, %s, %s, %s) ON CONFLICT (storename) DO NOTHING
+                """, (row['store_name'], row['store_manager'], row['password'], row['city_id']))
+
+
             
             # Products XLSX (column: product_name)
             products_df = pd.read_excel('products.csv.xlsx')
@@ -642,6 +638,12 @@ def start_live_updater():
     t = threading.Thread(target=live_updater_background, daemon=True)
     t.start()
     print("🚀 Live updater started!")
+def init_app():
+    with app.app_context():
+        ensure_tables_exist()
+        t = threading.Thread(target=live_updater_background, daemon=True)
+        t.start()
+        print("🚀 Live updater started!")
 
 if __name__ == "__main__":
     start_live_updater()  # 🔥 THIS WAS MISSING!
