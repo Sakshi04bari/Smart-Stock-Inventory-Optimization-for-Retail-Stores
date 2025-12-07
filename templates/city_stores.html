@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ cityname }} Stores - SmartStock{% endblock %}
+{% block content %}
+<div class="row mb-5">
+    <div class="col-12">
+        <h1 class="display-5 fw-bold mb-1">
+            <i class="fas fa-store text-success"></i> {{ cityname }} Stores
+        </h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb bg-transparent p-0">
+                <li class="breadcrumb-item"><a href="/cities">Cities</a></li>
+                <li class="breadcrumb-item active">{{ cityname }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<!-- Search -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <form method="GET">
+            <div class="input-group">
+                <input type="text" class="form-control glass-input" name="search" value="{{ search }}" placeholder="Search stores...">
+                <button class="btn glass-btn" type="submit"><i class="fas fa-search"></i></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Stores List -->
+<div class="row g-4">
+    {% for store in stores %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card glass-card h-100 border-0 shadow-lg">
+            <div class="card-body py-4">
+                <h5 class="fw-bold mb-3">{{ store.storename }}</h5>
+                <p class="text-muted mb-4">Store ID: {{ store.storeid }}</p>
+                <a href="/stores/{{ store.storeid }}/products" class="btn glass-btn w-100">
+                    <i class="fas fa-boxes me-2"></i>View Products
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

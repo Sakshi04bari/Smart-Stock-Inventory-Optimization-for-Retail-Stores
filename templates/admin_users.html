@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Admin Users - SmartStock{% endblock %}
+{% block content %}
+<!-- Hero Section -->
+<div class="row justify-content-center mt-4 mb-5">
+    <div class="col-lg-10">
+        <div class="text-center mb-5">
+            <i class="fas fa-users-cog fa-4x text-primary mb-4"></i>
+            <h1 class="display-5 fw-bold mb-2">Admin Users Management</h1>
+            <p class="lead text-muted">Advanced user management & permissions (Coming Soon)</p>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-4 mb-5">
+    <div class="col-md-3">
+        <div class="card h-100 shadow border-0 glass-card text-center">
+            <div class="card-body">
+                <i class="fas fa-user-shield fa-3x text-primary mb-3"></i>
+                <h3 class="fw-bold">1</h3>
+                <p class="text-muted mb-0">Admins</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100 shadow border-0 glass-card text-center">
+            <div class="card-body">
+                <i class="fas fa-store fa-3x text-success mb-3"></i>
+                <h3 class="fw-bold">897</h3>
+                <p class="text-muted mb-0">Store Managers</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100 shadow border-0 glass-card text-center">
+            <div class="card-body">
+                <i class="fas fa-users fa-3x text-info mb-3"></i>
+                <h3 class="fw-bold">898</h3>
+                <p class="text-muted mb-0">Total Users</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100 shadow border-0 glass-card text-center">
+            <div class="card-body">
+                <i class="fas fa-clock fa-3x text-warning mb-3"></i>
+                <h3 class="fw-bold">Active</h3>
+                <p class="text-muted mb-0">24/7</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="row justify-content-center mb-5">
+    <div class="col-lg-10">
+        <div class="row g-3">
+            <div class="col-lg-4 col-md-6">
+                <a href="/admin/stores" class="btn btn-danger btn-lg w-100 h-100">
+                    <i class="fas fa-store me-2"></i>
+                    🔐 Stores Management<br>
+                    <small class="d-block mt-1">(897 Stores + Passwords)</small>
+                </a>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <a href="/" class="btn btn-primary btn-lg w-100 h-100">
+                    <i class="fas fa-tachometer-alt me-2"></i>
+                    Live Dashboard<br>
+                    <small class="d-block mt-1">Real-time Alerts</small>
+                </a>
+            </div>
+            <div class="col-lg-4 col-md-12">
+                <a href="/cities" class="btn btn-success btn-lg w-100 h-100">
+                    <i class="fas fa-city me-2"></i>
+                    Cities & Stores<br>
+                    <small class="d-block mt-1">(18 Cities, 897 Stores)</small>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Features Coming Soon -->
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="card shadow-lg border-0 glass-card">
+            <div class="card-body p-5">
+                <h3 class="mb-4 text-center">
+                    <i class="fas fa-rocket me-2 text-info"></i>
+                    Features Coming Soon
+                </h3>
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                                <i class="fas fa-user-plus fa-lg"></i>
+                            </div>
+                            <div>
+                                <h5 class="mb-1">User Creation</h5>
+                                <p class="text-muted mb-0">Add new store managers & admins</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-warning text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                                <i class="fas fa-key fa-lg"></i>
+                            </div>
+                            <div>
+                                <h5 class="mb-1">Password Reset</h5>
+                                <p class="text-muted mb-0">Reset store manager passwords</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-info text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                                <i class="fas fa-user-lock fa-lg"></i>
+                            </div>
+                            <div>
+                                <h5 class="mb-1">Role Management</h5>
+                                <p class="text-muted mb-0">Promote/demote users</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-danger text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                                <i class="fas fa-user-slash fa-lg"></i>
+                            </div>
+                            <div>
+                                <h5 class="mb-1">Deactivate Users</h5>
+                                <p class="text-muted mb-0">Suspend store managers</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Footer -->
+<div class="row mt-5">
+    <div class="col-12 text-center">
+        <div class="card border-0 glass-card">
+            <div class="card-body py-4">
+                <p class="text-muted mb-0">
+                    SmartStock Admin Panel v2.0 | 
+                    <i class="fas fa-store"></i> 897 Stores Live | 
+                    <i class="fas fa-sync fa-spin" style="font-size: 0.8em;"></i> Real-time
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

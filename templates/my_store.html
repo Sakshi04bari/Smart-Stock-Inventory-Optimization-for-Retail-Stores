@@ -1,0 +1,48 @@
+<!-- templates/my_store.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h1>🏪 {{ user.storename }} - My Store Dashboard</h1>
+    <p>Live updates for YOUR store only</p>
+    
+    <!-- Live Counters -->
+    <div class="stats-grid">
+        <div class="stat-card danger">{{ overstock_count }} Overstock 🚨</div>
+        <div class="stat-card warning">{{ understock_count }} Restock ⚠️</div>
+        <div class="stat-card success">{{ okstock_count }} OK ✅</div>
+        <div class="stat-card info">{{ total_count }} Total</div>
+    </div>
+    
+    <!-- Recent Products -->
+    <h3>📦 Recent Products (Top 10)</h3>
+    <table class="table">
+        <tr><th>Product</th><th>Stock</th></tr>
+        {% for product in recent_products %}
+        <tr><td>{{ product.productname }}</td><td>{{ product.stock }}</td></tr>
+        {% endfor %}
+    </table>
+    
+    <!-- Recent Alerts Table -->
+    <h3>🔴 Live Alerts ({{ total_count }})</h3>
+    <div class="table-container">
+        <table class="alerts-table">
+            <thead>
+                <tr>
+                    <th>Time</th><th>Product</th><th>Sale</th><th>Stock</th><th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alert in alerts %}
+                <tr class="{{ 'overstock' if 'Overstock' in alert.stock_alert else 'understock' if 'Restock' in alert.stock_alert else 'okstock' }}">
+                    <td>{{ alert.timestamp }}</td>
+                    <td>{{ alert.product }}</td>
+                    <td>{{ alert.sale }}</td>
+                    <td><strong>{{ alert.stock }}</strong></td>
+                    <td>{{ alert.stock_alert }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
