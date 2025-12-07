@@ -1,11 +1,11 @@
-# app.py - COMPLETE SmartStock Dashboard (MY-STORE PAGE ✅ + POSTGRESQL FIX)
+# app.py - COMPLETE SmartStock Dashboard (POSTGRESQL ✅ + AUTO-CREATE TABLES ✅)
 import threading, time, random
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from sqlalchemy import create_engine, text
-import threading, time, random, os 
+import os 
 from dotenv import load_dotenv       
 from sqlalchemy.engine import URL
 import pandas as pd
@@ -17,7 +17,7 @@ from urllib.parse import urlparse   # 🔥 POSTGRESQL URL PARSER
 # ----------------------------
 # Config - DEPLOYMENT READY
 # ----------------------------
-load_dotenv()  # 🔥 NEW: Load environment variables
+load_dotenv()
 
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASS = os.getenv("DB_PASS", "Bhakthi@13")
@@ -25,26 +25,36 @@ DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", 3306))
 DB_NAME = os.getenv("DB_NAME", "smartstock_dynamic")
 
-# 🔥 Move app creation BEFORE engine_url
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "smartstock-super-secret-key-2025")
 
-engine_url = URL.create(
-    drivername="mysql+mysqlconnector",
-    username=DB_USER,
-    password=DB_PASS,
-    host=DB_HOST,
-    port=DB_PORT,
-    database=DB_NAME
-)
-# RIGHT AFTER THIS LINE (line 54):
+# 🔥 DYNAMIC ENGINE (PostgreSQL + MySQL)
+db_url = os.getenv('DATABASE_URL')
+if db_url and 'postgres' in db_url:
+    parsed = urlparse(db_url)
+    engine_url = URL.create(
+        drivername="postgresql+psycopg2",
+        username=parsed.username,
+        password=parsed.password,
+        host=parsed.hostname,
+        port=parsed.port or 5432,
+        database=parsed.path[1:],
+        query={"sslmode": "require"}
+    )
+else:
+    engine_url = URL.create(
+        drivername="mysql+mysqlconnector",
+        username=DB_USER,
+        password=DB_PASS,
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME
+    )
 engine = create_engine(engine_url, pool_pre_ping=True)
 
-# 🔥 PASTE THESE 2 FUNCTIONS HERE:
 def get_db_conn_raw():
     db_url = os.getenv('DATABASE_URL')
     if db_url and 'postgres' in db_url:
-        from psycopg2.extras import RealDictCursor
         parsed = urlparse(db_url)
         return psycopg2.connect(
             host=parsed.hostname,
@@ -52,24 +62,18 @@ def get_db_conn_raw():
             user=parsed.username,
             password=parsed.password,
             database=parsed.path[1:]
-        ), RealDictCursor
+        )
     else:
         return mysql.connector.connect(
             host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME
-        ), None
+        )
 
 def get_cursor(conn):
-    if isinstance(conn, tuple):  # PostgreSQL
-        real_conn, cursor_factory = conn
-        return real_conn.cursor(cursor_factory)
-    return conn.cursor(dictionary=True)  # MySQL
+    return conn.cursor()
 
 # ----------------------------
-# Flask + Login (FIXED)
+# Flask + Login
 # ----------------------------
-app = Flask(__name__)
-app.secret_key = "smartstock-super-secret-key-2025"
-
 login_manager = LoginManager()
 login_manager.login_view = "login"
 login_manager.login_message = "Login required!"
@@ -105,18 +109,62 @@ def load_user(user_id):
     return None
 
 # ----------------------------
-# Live Alerts Storage (PER-USER FILTERING)
+# Live Alerts Storage
 # ----------------------------
 all_alerts = []
 
 # ----------------------------
-# 🔥 LIVE UPDATER (15s + BETTER ALERTS)
+# 🔥 LIVE UPDATER (15s + AUTO-CREATE TABLES)
 # ----------------------------
 def live_updater_background():
     global all_alerts
     conn = get_db_conn_raw()
     cur = get_cursor(conn)
 
+    # 🔥 AUTO-CREATE TABLES + DATA
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS city (
+            cityid SERIAL PRIMARY KEY, 
+            cityname VARCHAR(50)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS store (
+            storeid SERIAL PRIMARY KEY, 
+            storename VARCHAR(50), 
+            store_manager VARCHAR(50), 
+            password VARCHAR(50), 
+            cityid INT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS product (
+            productid SERIAL PRIMARY KEY, 
+            productname VARCHAR(50)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sales (
+            id SERIAL PRIMARY KEY, 
+            dt TIMESTAMP, 
+            cityid INT, 
+            storeid INT, 
+            productid INT, 
+            sale_amount INT, 
+            stock INT, 
+            hour INT, 
+            discount INT, 
+            holiday_flag INT, 
+            activity_flag INT
+        )
+    """)
+    
+    cur.execute("INSERT INTO city (cityname) VALUES ('Mumbai'), ('Delhi'), ('Bangalore') ON CONFLICT DO NOTHING")
+    cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1), ('Store2', 'mgr2', 'pass2', 1) ON CONFLICT DO NOTHING")
+    cur.execute("INSERT INTO product (productname) VALUES ('Milk'), ('Bread'), ('Rice'), ('Oil') ON CONFLICT DO NOTHING")
+    conn.commit()
+    
+    # Load data
     cur.execute("SELECT productid, productname FROM product")
     products = cur.fetchall()
     cur.execute("SELECT storeid, storename, cityid FROM store")
@@ -124,14 +172,8 @@ def live_updater_background():
     cur.execute("SELECT cityid, cityname FROM city")
     cities = dict(cur.fetchall())
 
-    if not products or not stores:
-        print("DB empty: populate first")
-        cur.close()
-        conn.close()
-        return
-
-    SALE_INTERVAL = 15
     print("🚀 Live updater started! (15s updates)")
+    SALE_INTERVAL = 15
     try:
         while True:
             now = datetime.now()
@@ -161,7 +203,7 @@ def live_updater_background():
             """, (now, cityid, storeid, productid, sale_amount, new_stock, hour, discount, holiday_flag, activity_flag))
             conn.commit()
 
-            # 🔥 BETTER ALERTS (35% Overstock, 25% Understock, 40% OK)
+            # 🔥 BETTER ALERTS
             if random.random() < 0.35:  # 35% Overstock
                 new_stock += random.randint(35, 60)
                 stock_alert = "Overstock 🚨"
@@ -174,7 +216,7 @@ def live_updater_background():
             alert = {
                 "city": cityname,
                 "store": storename,
-                "storeid": storeid,  # 🔥 ADDED for filtering
+                "storeid": storeid,
                 "product": productname,
                 "sale": int(sale_amount),
                 "stock": int(new_stock),
@@ -201,35 +243,33 @@ def login():
         password = request.form.get("password")
         print(f"🔓 LOGIN ATTEMPT: {username}/{password}")
         
-        conn = get_db_conn_raw()
-        cursor = get_cursor(conn)
-        
-        # STORE MANAGER LOGIN
-        cursor.execute("SELECT * FROM store WHERE store_manager = %s AND password = %s", (username, password))
-        store_user = cursor.fetchone()
-        
-        if store_user:
-            print(f"✅ STORE MANAGER LOGIN: {username}")
-            session['user_data'] = {
-                'id': store_user['storeid'],
-                'username': store_user['store_manager'],
-                'role': 'store_manager',
-                'storeid': store_user['storeid'],
-                'storename': store_user['storename'],
-                'cityid': store_user['cityid']
-            }
-            user_obj = User(**session['user_data'])
-            login_user(user_obj)
-            conn.close()
-            return redirect(url_for('dashboard'))
-        
-        # ADMIN LOGIN
+        # ADMIN LOGIN FIRST (NO DB NEEDED)
         if username == "admin" and password == "admin123":
             print("✅ ADMIN LOGIN SUCCESS!")
             session['user_data'] = {
                 'id': 1,
                 'username': 'admin',
                 'role': 'admin'
+            }
+            user_obj = User(**session['user_data'])
+            login_user(user_obj)
+            return redirect(url_for('dashboard'))
+        
+        # STORE MANAGER LOGIN
+        conn = get_db_conn_raw()
+        cursor = get_cursor(conn)
+        cursor.execute("SELECT storeid, storename, store_manager, cityid FROM store WHERE store_manager = %s AND password = %s", (username, password))
+        store_user = cursor.fetchone()
+        
+        if store_user:
+            print(f"✅ STORE MANAGER LOGIN: {username}")
+            session['user_data'] = {
+                'id': store_user[0],  # storeid
+                'username': store_user[2],  # store_manager
+                'role': 'store_manager',
+                'storeid': store_user[0],
+                'storename': store_user[1],
+                'cityid': store_user[3]
             }
             user_obj = User(**session['user_data'])
             login_user(user_obj)
@@ -248,7 +288,6 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# 🔥 NEW: MY-STORE PAGE (Replaces store_manager.html - No conflicts!)
 @app.route("/my-store")
 @login_required
 def my_store_dashboard():
@@ -260,13 +299,11 @@ def my_store_dashboard():
     store_alerts = [a for a in all_alerts if a.get('storeid') == storeid]
     alerts = list(reversed(store_alerts[-30:]))
     
-    # Store-specific stats
     understock_count = len([a for a in alerts if "Restock Needed" in a['stock_alert']])
     overstock_count = len([a for a in alerts if "Overstock" in a['stock_alert']])
     okstock_count = len([a for a in alerts if "Stock OK" in a['stock_alert']])
     total_count = len(alerts)
     
-    # Get store products summary
     try:
         df = pd.read_sql(text("""
             SELECT p.productname, COALESCE(s.stock, 0) as stock
@@ -290,7 +327,6 @@ def my_store_dashboard():
                          recent_products=recent_products,
                          user=current_user)
 
-# 🔥 FIXED ADMIN STORES (897 stores + managers + passwords) - STORE MANAGER BLOCKED
 @app.route("/admin/stores")
 @login_required
 def admin_stores():
@@ -312,7 +348,16 @@ def admin_stores():
     else:
         cursor.execute("SELECT storeid, storename, store_manager, password, cityid FROM store ORDER BY storeid")
     
-    stores = cursor.fetchall()
+    stores_raw = cursor.fetchall()
+    stores = []
+    for row in stores_raw:
+        stores.append({
+            'storeid': row[0],
+            'storename': row[1], 
+            'store_manager': row[2],
+            'password': row[3],
+            'cityid': row[4]
+        })
     print(f"🔍 Admin stores query returned: {len(stores)} stores")
     cursor.close()
     conn.close()
@@ -387,7 +432,6 @@ def city_stores_page(cityid):
 @app.route("/stores/<int:storeid>/products")
 @login_required
 def store_products_page(storeid):
-    # 🔥 STORE MANAGER CAN ONLY VIEW THEIR OWN STORE
     if current_user.role == 'store_manager' and current_user.storeid != storeid:
         flash("❌ You can only view your own store products!", "danger")
         return redirect(url_for('dashboard'))
@@ -424,11 +468,9 @@ def store_products_page(storeid):
         print(f"❌ Store products error: {e}")
         return f"<h1>Store {storeid} Products: Error {str(e)}</h1>"
 
-# 🔥 FIXED DASHBOARD (STORE MANAGER SEES ONLY THEIR STORE UPDATES ✅)
 @app.route("/")
 @login_required
 def dashboard():
-    # 🔥 STORE MANAGER FILTER: Only show their store's alerts
     if current_user.role == 'store_manager':
         user_storeid = current_user.storeid
         store_alerts = [a for a in all_alerts if a.get('storeid') == user_storeid]
@@ -436,13 +478,12 @@ def dashboard():
         title = f"🛒 {current_user.storename} Dashboard"
         subtitle = f"Showing only {current_user.storename} updates"
         my_store_link = url_for('my_store_dashboard')
-    else:  # ADMIN sees everything
+    else:
         alerts = list(reversed(all_alerts[-50:]))
         title = "🌟 SmartStock Admin Dashboard"
         subtitle = "All stores - Live updates"
         my_store_link = None
     
-    # 🔥 LIVE COUNTERS (Filtered for store manager)
     understock_count = len([a for a in alerts if "Restock Needed" in a['stock_alert']])
     overstock_count = len([a for a in alerts if "Overstock" in a['stock_alert']])
     okstock_count = len([a for a in alerts if "Stock OK" in a['stock_alert']])
@@ -462,7 +503,6 @@ def dashboard():
 @app.route("/overstock")
 @login_required
 def overstock_page():
-    # 🔥 STORE MANAGER FILTER
     if current_user.role == 'store_manager':
         user_storeid = current_user.storeid
         alerts = [a for a in reversed(all_alerts) if "Overstock" in a['stock_alert'] and a.get('storeid') == user_storeid]
@@ -475,7 +515,6 @@ def overstock_page():
 @app.route("/understock")
 @login_required
 def understock_page():
-    # 🔥 STORE MANAGER FILTER
     if current_user.role == 'store_manager':
         user_storeid = current_user.storeid
         alerts = [a for a in reversed(all_alerts) if "Restock" in a['stock_alert'] and a.get('storeid') == user_storeid]
@@ -488,7 +527,6 @@ def understock_page():
 @app.route("/ok-stock")
 @login_required
 def ok_stock_page():
-    # 🔥 STORE MANAGER FILTER
     if current_user.role == 'store_manager':
         user_storeid = current_user.storeid
         alerts = [a for a in reversed(all_alerts) if "Stock OK" in a['stock_alert'] and a.get('storeid') == user_storeid]
@@ -502,7 +540,6 @@ def ok_stock_page():
 @login_required
 def get_alerts_api():
     n = int(request.args.get("n", 200))
-    # 🔥 API also respects store manager filtering
     if current_user.role == 'store_manager':
         user_storeid = current_user.storeid
         alerts = [a for a in reversed(all_alerts) if a.get('storeid') == user_storeid][-n:]
@@ -525,9 +562,7 @@ if __name__=="__main__":
     debug = os.environ.get('DEBUG', 'True').lower() == 'true'
     
     print("🌟 SmartStock Dashboard: http://{}:{}".format(host, port))
-    print("🔓 ADMIN: admin / admin123 → Sees ALL stores + /admin/stores (897 stores)")
-    print("🔓 MANAGER: Ahm-Store 1-mgr / Ahm.Store@1 → /my-store (THEIR STORE ONLY)")
-    print("✅ /my-store page added - Uses my_store.html (no conflicts!)")
-    print("✅ PostgreSQL support added for Render!")
+    print("🔓 ADMIN: admin / admin123 → Sees ALL stores + /admin/stores")
+    print("🔓 MANAGER: mgr1 / pass1 → /my-store (THEIR STORE ONLY)")
+    print("✅ PostgreSQL + MySQL + Auto-create tables!")
     app.run(host=host, port=port, debug=debug)
-
