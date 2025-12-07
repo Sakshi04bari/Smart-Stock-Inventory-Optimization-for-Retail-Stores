@@ -115,6 +115,58 @@ all_alerts = []
 # ----------------------------
 # 🔥 LIVE UPDATER (15s + AUTO-CREATE TABLES)
 # ----------------------------
+init_done = False
+
+def ensure_tables_exist():
+    global init_done
+    if init_done:
+        return
+    
+    print("🛠️ Creating tables (Gunicorn-safe)...")
+    try:
+        conn = get_db_conn_raw()
+        cur = get_cursor(conn)
+        
+        # ALL TABLES
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS city (
+                cityid SERIAL PRIMARY KEY, cityname VARCHAR(50)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS store (
+                storeid SERIAL PRIMARY KEY, storename VARCHAR(50), 
+                store_manager VARCHAR(50), password VARCHAR(50), cityid INT
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS product (
+                productid SERIAL PRIMARY KEY, productname VARCHAR(50)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS sales (
+                id SERIAL PRIMARY KEY, dt TIMESTAMP, cityid INT, storeid INT, 
+                productid INT, sale_amount INT, stock INT, hour INT, 
+                discount INT, holiday_flag INT, activity_flag INT
+            )
+        """)
+        
+        # SEED DATA
+        cur.execute("INSERT INTO city (cityname) VALUES ('Mumbai'), ('Delhi'), ('Bangalore') ON CONFLICT DO NOTHING")
+        cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1), ('Store2', 'mgr2', 'pass2', 1) ON CONFLICT DO NOTHING")
+        cur.execute("INSERT INTO product (productname) VALUES ('Milk'), ('Bread'), ('Rice'), ('Oil') ON CONFLICT DO NOTHING")
+        
+        conn.commit()
+        print("✅ Tables + data ready!")
+        init_done = True
+        
+    except Exception as e:
+        print(f"❌ Table error: {e}")
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
+
 def live_updater_background():
     global all_alerts
     conn = get_db_conn_raw()
@@ -237,6 +289,7 @@ def live_updater_background():
 # ----------------------------
 @app.route("/login", methods=["GET","POST"])
 def login():
+    ensure_tables_exist()  # 🔥 TABLES FIRST!
     if request.method=="POST":
         username = request.form.get("username")
         password = request.form.get("password")
@@ -279,7 +332,6 @@ def login():
         flash("Invalid credentials! Try: admin/admin123", "danger")
     
     return render_template("login.html")
-
 @app.route("/logout")
 @login_required
 def logout():
@@ -553,63 +605,8 @@ def toggle_theme():
     session['theme'] = 'dark' if current_theme == 'light' else 'light'
     return redirect(request.referrer or url_for('dashboard'))
 
-def init_app():
-    """Initialize tables + live updater on EVERY startup (Render/Gunicorn)"""
-    print("🛠️ Initializing SmartStock Dashboard...")
-    
-    # 1. CREATE TABLES FIRST
-    try:
-        conn = get_db_conn_raw()
-        cur = get_cursor(conn)
-        
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS city (
-                cityid SERIAL PRIMARY KEY, cityname VARCHAR(50)
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS store (
-                storeid SERIAL PRIMARY KEY, storename VARCHAR(50), 
-                store_manager VARCHAR(50), password VARCHAR(50), cityid INT
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS product (
-                productid SERIAL PRIMARY KEY, productname VARCHAR(50)
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS sales (
-                id SERIAL PRIMARY KEY, dt TIMESTAMP, cityid INT, storeid INT, 
-                productid INT, sale_amount INT, stock INT, hour INT, 
-                discount INT, holiday_flag INT, activity_flag INT
-            )
-        """)
-        
-        # Seed initial data
-        cur.execute("INSERT INTO city (cityname) VALUES ('Mumbai'), ('Delhi'), ('Bangalore') ON CONFLICT DO NOTHING")
-        cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1), ('Store2', 'mgr2', 'pass2', 1) ON CONFLICT DO NOTHING")
-        cur.execute("INSERT INTO product (productname) VALUES ('Milk'), ('Bread'), ('Rice'), ('Oil') ON CONFLICT DO NOTHING")
-        
-        conn.commit()
-        print("✅ Tables created and seeded!")
-        
-    except Exception as e:
-        print(f"❌ Table creation error: {e}")
-    finally:
-        if 'cur' in locals(): cur.close()
-        if 'conn' in locals(): conn.close()
-    
-    # 2. START LIVE UPDATER (Tables must exist first!)
-    t = threading.Thread(target=live_updater_background, daemon=True)
-    t.start()
-    print("🚀 Live updater started!")
-
 # Run initialization + app
 if __name__ == "__main__":
-    with app.app_context():  # Flask 2.3+ safe context
-        init_app()
-    
     port = int(os.environ.get('PORT', 5000))
     host = os.environ.get('HOST', '0.0.0.0')
     debug = os.environ.get('DEBUG', 'True').lower() == 'true'
