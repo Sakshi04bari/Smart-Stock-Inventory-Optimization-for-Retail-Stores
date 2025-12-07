@@ -188,12 +188,13 @@ def ensure_tables_exist():
             products_df = pd.read_excel('products.csv.xlsx')
             
             print(f"📊 Found: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products")
-            
-            # TRUNCATE & RELOAD
-            cur.execute("TRUNCATE TABLE sales")
-            cur.execute("TRUNCATE TABLE store") 
-            cur.execute("TRUNCATE TABLE city")
-            cur.execute("TRUNCATE TABLE product")
+            try:
+                cur.execute("TRUNCATE TABLE sales, store, city, product RESTART IDENTITY CASCADE")
+            except:
+                cur.execute("TRUNCATE TABLE sales")
+                cur.execute("TRUNCATE TABLE store") 
+                cur.execute("TRUNCATE TABLE city")
+                cur.execute("TRUNCATE TABLE product")
             conn.commit()
 
             # 🔥 PERFECT CITY-STORE SYNC (stores.xlsx = AUTHORITATIVE)
@@ -284,6 +285,7 @@ def ensure_tables_exist():
         if conn: conn.close()
 
 def live_updater_background():
+    
     global all_alerts
     ensure_tables_exist()
     
@@ -786,6 +788,8 @@ def start_live_updater_once():
         live_thread = threading.Thread(target=live_updater_background, daemon=True)
         live_thread.start()
         print("🚀 Live updater started! (SINGLE THREAD)")
+        # RENDER RESTART TIMER
+        threading.Timer(300.0, start_live_updater_once).start()
 
 def init_app():
     with app.app_context():
@@ -793,6 +797,15 @@ def init_app():
         start_live_updater_once()  # ✅ SINGLE CALL
 
 init_app()
+@app.route("/debug")
+def debug():
+    return jsonify({
+        "alerts_count": len(all_alerts),
+        "forecasts_count": len(all_forecasts),
+        "live_thread_alive": live_thread is not None and live_thread.is_alive() if 'live_thread' in globals() else False,
+        "thread_count": threading.active_count()
+    })
+
 
 if __name__ == "__main__":
     start_live_updater_once()  # ✅ SINGLE CALL
