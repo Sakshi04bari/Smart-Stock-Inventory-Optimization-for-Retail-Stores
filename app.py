@@ -290,12 +290,16 @@ def live_updater_background():
     cur = get_cursor(conn)
     
     # ✅ FIXED: Safe data loading
-    cur.execute("SELECT productid, productname FROM product LIMIT 10")
+    # ✅ FIXED: FULL DATA (NO LIMIT!)
+    cur.execute("SELECT productid, productname FROM product")  # 🔥 NO LIMIT!
     products = cur.fetchall()
-    cur.execute("SELECT storeid, storename, cityid FROM store LIMIT 10")
+    cur.execute("SELECT storeid, storename, cityid FROM store")  # 🔥 NO LIMIT!
     stores = cur.fetchall()
     cur.execute("SELECT cityid, cityname FROM city")
     cities = dict(cur.fetchall())
+
+    print(f"🚀 LIVE: {len(stores)} stores, {len(products)} products")  # DEBUG
+
     
     if not stores or not products:
         print("⚠️ No stores/products - demo mode")
