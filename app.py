@@ -555,14 +555,53 @@ def toggle_theme():
     return redirect(request.referrer or url_for('dashboard'))
 
 if __name__=="__main__":
+    # 🔥 CREATE TABLES FIRST (before starting updater)
+    print("🛠️ Initializing database tables...")
+    init_conn = get_db_conn_raw()
+    init_cur = get_cursor(init_conn)
+    
+    # Create all tables
+    init_cur.execute("""
+        CREATE TABLE IF NOT EXISTS city (
+            cityid SERIAL PRIMARY KEY, cityname VARCHAR(50)
+        )
+    """)
+    init_cur.execute("""
+        CREATE TABLE IF NOT EXISTS store (
+            storeid SERIAL PRIMARY KEY, storename VARCHAR(50), 
+            store_manager VARCHAR(50), password VARCHAR(50), cityid INT
+        )
+    """)
+    init_cur.execute("""
+        CREATE TABLE IF NOT EXISTS product (
+            productid SERIAL PRIMARY KEY, productname VARCHAR(50)
+        )
+    """)
+    init_cur.execute("""
+        CREATE TABLE IF NOT EXISTS sales (
+            id SERIAL PRIMARY KEY, dt TIMESTAMP, cityid INT, storeid INT, 
+            productid INT, sale_amount INT, stock INT, hour INT, 
+            discount INT, holiday_flag INT, activity_flag INT
+        )
+    """)
+    init_cur.execute("INSERT INTO city (cityname) VALUES ('Mumbai'), ('Delhi') ON CONFLICT DO NOTHING")
+    init_cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1) ON CONFLICT DO NOTHING")
+    init_cur.execute("INSERT INTO product (productname) VALUES ('Milk'), ('Bread') ON CONFLICT DO NOTHING")
+    init_conn.commit()
+    init_cur.close()
+    init_conn.close()
+    print("✅ Tables created!")
+    
+    # Start live updater
     t = threading.Thread(target=live_updater_background, daemon=True)
     t.start()
+    
     port = int(os.environ.get('PORT', 5000))
-    host = os.environ.get('HOST', '127.0.0.1')
+    host = os.environ.get('HOST', '0.0.0.0')  # Render needs 0.0.0.0
     debug = os.environ.get('DEBUG', 'True').lower() == 'true'
     
     print("🌟 SmartStock Dashboard: http://{}:{}".format(host, port))
-    print("🔓 ADMIN: admin / admin123 → Sees ALL stores + /admin/stores")
-    print("🔓 MANAGER: mgr1 / pass1 → /my-store (THEIR STORE ONLY)")
-    print("✅ PostgreSQL + MySQL + Auto-create tables!")
+    print("🔓 ADMIN: admin / admin123 → LIVE!")
+    print("🔓 MANAGER: mgr1 / pass1 → /my-store")
     app.run(host=host, port=port, debug=debug)
+
