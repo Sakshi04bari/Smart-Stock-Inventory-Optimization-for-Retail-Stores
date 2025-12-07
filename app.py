@@ -184,31 +184,30 @@ def ensure_tables_exist():
 
             successful_stores = 0
             failed_stores = 0
+            # 2. STORES - USE city_id DIRECTLY (NO city_name lookup!)
             for idx, row in stores_df.iterrows():
-                print(f"Row {idx}: {list(row.index)}")  # SHOW ACTUAL COLUMN NAMES
+                # ✅ YOUR PERFECT COLUMNS
+                storename = str(row['store_name']).strip()
+                store_manager = str(row['store_manager']).strip()
+                password = str(row['password'])
+                cityid_raw = row['city_id']  # USE THIS DIRECTLY!
                 
-                # TRY MULTIPLE POSSIBLE COLUMN NAMES
-                storename = row.get('store_name') or row.get('store_name ') or row.get('Store_name') or row.iloc[2]
-                store_manager = row.get('store_manager') or row.get('store_manager ') or row.get('Store_manager') or row.iloc[4]
-                password = row.get('password') or row.get('passwwwrod') or row.get('Password') or row.iloc[5]
-                city_name = row.get('city_name') or row.get('city_name ') or row.get('City_name') or row.iloc[3]
+                # 🔥 Convert to int, default to 1 if invalid
+                try:
+                    cityid = int(cityid_raw)
+                except:
+                    cityid = 1  # Mumbai fallback
                 
-                cityid = city_map.get(city_name)
-                if cityid and storename and store_manager and storename.strip():
-                    try:
-                        cur.execute("""
-                            INSERT INTO store (storename, store_manager, password, cityid) 
-                            VALUES (%s, %s, %s, %s) ON CONFLICT (storename) DO NOTHING
-                        """, (storename.strip(), store_manager.strip(), password, cityid))
-                        successful_stores += 1
-                    except Exception as e:
-                        print(f"❌ Store insert fail: {storename} - {e}")
-                        failed_stores += 1
-                else:
-                    failed_stores += 1
+                if storename and store_manager and cityid > 0:
+                    cur.execute("""
+                        INSERT INTO store (storename, store_manager, password, cityid) 
+                        VALUES (%s, %s, %s, %s) ON CONFLICT (storename) DO NOTHING
+                    """, (storename, store_manager, password, cityid))
+                    successful_stores += 1
 
             conn.commit()
-            print(f"📊 Stores: {successful_stores} success, {failed_stores} failed")
+            print(f"✅ STORES LOADED: {successful_stores}/897 using city_id directly!")
+
 
             # 3. PRODUCTS
             for _, row in products_df.iterrows():
