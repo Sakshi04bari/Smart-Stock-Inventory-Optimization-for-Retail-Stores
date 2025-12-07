@@ -688,20 +688,25 @@ def toggle_theme():
     current_theme = session.get('theme', 'light')
     session['theme'] = 'dark' if current_theme == 'light' else 'light'
     return redirect(request.referrer or url_for('dashboard'))
-# 🔥 START LIVE UPDATER
-def start_live_updater():
-    t = threading.Thread(target=live_updater_background, daemon=True)
-    t.start()
-    print("🚀 Live updater started!")
+
+live_thread = None
+
+def start_live_updater_once():
+    global live_thread
+    if live_thread is None or not live_thread.is_alive():
+        live_thread = threading.Thread(target=live_updater_background, daemon=True)
+        live_thread.start()
+        print("🚀 Live updater started! (SINGLE THREAD)")
+
 def init_app():
     with app.app_context():
         ensure_tables_exist()
-        t = threading.Thread(target=live_updater_background, daemon=True)
-        t.start()
-        print("🚀 Live updater started!")
-init_app()  
+        start_live_updater_once()  # ✅ SINGLE CALL
+
+init_app()
+
 if __name__ == "__main__":
-    start_live_updater()  # 🔥 THIS WAS MISSING!
+    start_live_updater_once()  # ✅ SINGLE CALL
     port = int(os.environ.get('PORT', 5000))
     host = os.environ.get('HOST', '0.0.0.0')
     debug = os.environ.get('DEBUG', 'True').lower() == 'true'
