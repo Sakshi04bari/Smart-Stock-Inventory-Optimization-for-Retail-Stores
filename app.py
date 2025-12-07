@@ -111,6 +111,13 @@ def load_user(user_id):
 # Live Alerts Storage
 # ----------------------------
 all_alerts = []
+import atexit
+def init_startup():
+    ensure_tables_exist()
+    t = threading.Thread(target=live_updater_background, daemon=True)
+    t.start()
+    print("🚀 Live updater started!")
+atexit.register(init_startup)
 
 # ----------------------------
 # 🔥 LIVE UPDATER (15s + AUTO-CREATE TABLES)
@@ -152,25 +159,25 @@ def ensure_tables_exist():
             )
         """)
         
-        # 🔥 LOAD YOUR REAL DATA (XLSX files in ROOT)
+        # 🔥 LOAD YOUR REAL DATA (YOUR column names)
         try:
-            # Cities XLSX
+            # Cities XLSX (column: city_name)
             cities_df = pd.read_excel('cities.csv.xlsx')
             for _, row in cities_df.iterrows():
-                cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT DO NOTHING", (row['cityname'],))
+                cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT DO NOTHING", (row['city_name'],))
             
-            # Stores XLSX  
+            # Stores XLSX (store_name, ?, ?, city_id)
             stores_df = pd.read_excel('stores.xlsx')
             for _, row in stores_df.iterrows():
                 cur.execute("""
-                    INSERT INTO store (storename, store_manager, password, cityid) 
+                    INSERT INTO store (storename, store_manager, password, city_id) 
                     VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING
-                """, (row['storename'], row['store_manager'], row['password'], row['cityid']))
+                """, (row['store_name'], str(row.iloc[1]), str(row.iloc[2]), row['city_id']))
             
-            # Products XLSX
+            # Products XLSX (column: product_name)
             products_df = pd.read_excel('products.csv.xlsx')
             for _, row in products_df.iterrows():
-                cur.execute("INSERT INTO product (productname) VALUES (%s) ON CONFLICT DO NOTHING", (row['productname'],))
+                cur.execute("INSERT INTO product (productname) VALUES (%s) ON CONFLICT DO NOTHING", (row['product_name'],))
             
             print(f"✅ LOADED: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products!")
         except (FileNotFoundError, KeyError) as e:
@@ -186,8 +193,11 @@ def ensure_tables_exist():
     except Exception as e:
         print(f"❌ Table error: {e}")
     finally:
-        if 'cur' in locals(): cur.close()
-        if 'conn' in locals(): conn.close()
+        if 'cur' in locals(): 
+            cur.close()
+        if 'conn' in locals(): 
+            conn.close()
+
 
 
 def live_updater_background():
