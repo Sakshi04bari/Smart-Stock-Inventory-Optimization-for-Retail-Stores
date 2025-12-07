@@ -279,9 +279,6 @@ def ensure_tables_exist():
         if cur: cur.close()
         if conn: conn.close()
 
-
-
-
 def live_updater_background():
     global all_alerts
     ensure_tables_exist()
@@ -289,35 +286,38 @@ def live_updater_background():
     conn = get_db_conn_raw()
     cur = get_cursor(conn)
     
-    # ✅ FIXED: Safe data loading
-    # ✅ FIXED: FULL DATA (NO LIMIT!)
-    cur.execute("SELECT productid, productname FROM product")  # 🔥 NO LIMIT!
-    products = cur.fetchall()
-    cur.execute("SELECT storeid, storename, cityid FROM store")  # 🔥 NO LIMIT!
-    stores = cur.fetchall()
-    cur.execute("SELECT cityid, cityname FROM city")
-    cities = dict(cur.fetchall())
-
-    print(f"🚀 LIVE: {len(stores)} stores, {len(products)} products")  # DEBUG
-
-    
-    if not stores or not products:
-        print("⚠️ No stores/products - demo mode")
-        stores = [(1, 'Demo Store', 1)]
-        products = [(1, 'Demo Product')]
-        cities = {1: 'Demo City'}
-    
-    print("🚀 Live updater started! (15s updates)")
-    SALE_INTERVAL = 15
     try:
+        # ✅ FULL DATA with ERROR HANDLING
+        cur.execute("SELECT productid, productname FROM product")
+        products = cur.fetchall() or []
+        
+        cur.execute("SELECT storeid, storename, cityid FROM store")
+        stores = cur.fetchall() or []
+        
+        cur.execute("SELECT cityid, cityname FROM city")
+        cities_raw = cur.fetchall() or []
+        cities = {}
+        for row in cities_raw:
+            cities[row[0]] = row[1] or f"City_{row[0]}"  # ✅ Handle NULL/0
+        
+        print(f"🚀 LIVE: {len(stores)} stores, {len(products)} products, {len(cities)} cities")  
+        
+        if not stores or not products:
+            print("⚠️ Demo mode")
+            stores = [(1, 'Demo Store', 1)]
+            products = [(1, 'Demo Product')]
+            cities = {1: 'Demo City'}
+    
+        print("🚀 Live updater LOOP STARTED! (15s)")
+        SALE_INTERVAL = 15
+        
         while True:
             now = datetime.now()
             store_row = random.choice(stores)
             product_row = random.choice(products)
             storeid, storename, cityid = store_row
             productid, productname = product_row
-            cityname = cities.get(cityid, "Unknown City")
-
+            cityname = cities.get(cityid, f"City_{cityid}")  # ✅ SAFE!
             sale_amount = random.randint(2, 15)
             cur.execute(
                 "SELECT stock FROM sales WHERE storeid=%s AND productid=%s ORDER BY dt DESC LIMIT 1",
