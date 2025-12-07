@@ -1,4 +1,4 @@
-# app.py - COMPLETE SmartStock Dashboard (POSTGRESQL ✅ + AUTO-CREATE TABLES ✅)
+# app.py - COMPLETE SmartStock Dashboard (POSTGRESQL ✅ + LIVE UPDATES FIXED ✅)
 import threading, time, random
 from datetime import datetime, timedelta
 from functools import wraps
@@ -107,7 +107,6 @@ def load_user(user_id):
             cityname=data.get('cityname')
         )
     return None
-
 # ----------------------------
 # Live Alerts Storage
 # ----------------------------
@@ -554,54 +553,68 @@ def toggle_theme():
     session['theme'] = 'dark' if current_theme == 'light' else 'light'
     return redirect(request.referrer or url_for('dashboard'))
 
-if __name__=="__main__":
-    # 🔥 CREATE TABLES FIRST (before starting updater)
-    print("🛠️ Initializing database tables...")
-    init_conn = get_db_conn_raw()
-    init_cur = get_cursor(init_conn)
+def init_app():
+    """Initialize tables + live updater on EVERY startup (Render/Gunicorn)"""
+    print("🛠️ Initializing SmartStock Dashboard...")
     
-    # Create all tables
-    init_cur.execute("""
-        CREATE TABLE IF NOT EXISTS city (
-            cityid SERIAL PRIMARY KEY, cityname VARCHAR(50)
-        )
-    """)
-    init_cur.execute("""
-        CREATE TABLE IF NOT EXISTS store (
-            storeid SERIAL PRIMARY KEY, storename VARCHAR(50), 
-            store_manager VARCHAR(50), password VARCHAR(50), cityid INT
-        )
-    """)
-    init_cur.execute("""
-        CREATE TABLE IF NOT EXISTS product (
-            productid SERIAL PRIMARY KEY, productname VARCHAR(50)
-        )
-    """)
-    init_cur.execute("""
-        CREATE TABLE IF NOT EXISTS sales (
-            id SERIAL PRIMARY KEY, dt TIMESTAMP, cityid INT, storeid INT, 
-            productid INT, sale_amount INT, stock INT, hour INT, 
-            discount INT, holiday_flag INT, activity_flag INT
-        )
-    """)
-    init_cur.execute("INSERT INTO city (cityname) VALUES ('Mumbai'), ('Delhi') ON CONFLICT DO NOTHING")
-    init_cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1) ON CONFLICT DO NOTHING")
-    init_cur.execute("INSERT INTO product (productname) VALUES ('Milk'), ('Bread') ON CONFLICT DO NOTHING")
-    init_conn.commit()
-    init_cur.close()
-    init_conn.close()
-    print("✅ Tables created!")
+    # 1. CREATE TABLES FIRST
+    try:
+        conn = get_db_conn_raw()
+        cur = get_cursor(conn)
+        
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS city (
+                cityid SERIAL PRIMARY KEY, cityname VARCHAR(50)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS store (
+                storeid SERIAL PRIMARY KEY, storename VARCHAR(50), 
+                store_manager VARCHAR(50), password VARCHAR(50), cityid INT
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS product (
+                productid SERIAL PRIMARY KEY, productname VARCHAR(50)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS sales (
+                id SERIAL PRIMARY KEY, dt TIMESTAMP, cityid INT, storeid INT, 
+                productid INT, sale_amount INT, stock INT, hour INT, 
+                discount INT, holiday_flag INT, activity_flag INT
+            )
+        """)
+        
+        # Seed initial data
+        cur.execute("INSERT INTO city (cityname) VALUES ('Mumbai'), ('Delhi'), ('Bangalore') ON CONFLICT DO NOTHING")
+        cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1), ('Store2', 'mgr2', 'pass2', 1) ON CONFLICT DO NOTHING")
+        cur.execute("INSERT INTO product (productname) VALUES ('Milk'), ('Bread'), ('Rice'), ('Oil') ON CONFLICT DO NOTHING")
+        
+        conn.commit()
+        print("✅ Tables created and seeded!")
+        
+    except Exception as e:
+        print(f"❌ Table creation error: {e}")
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
     
-    # Start live updater
+    # 2. START LIVE UPDATER (Tables must exist first!)
     t = threading.Thread(target=live_updater_background, daemon=True)
     t.start()
+    print("🚀 Live updater started!")
+
+# Run initialization + app
+if __name__ == "__main__":
+    with app.app_context():  # Flask 2.3+ safe context
+        init_app()
     
     port = int(os.environ.get('PORT', 5000))
-    host = os.environ.get('HOST', '0.0.0.0')  # Render needs 0.0.0.0
+    host = os.environ.get('HOST', '0.0.0.0')
     debug = os.environ.get('DEBUG', 'True').lower() == 'true'
     
-    print("🌟 SmartStock Dashboard: http://{}:{}".format(host, port))
-    print("🔓 ADMIN: admin / admin123 → LIVE!")
-    print("🔓 MANAGER: mgr1 / pass1 → /my-store")
+    print("🌟 SmartStock Dashboard ready!")
+    print("🔓 ADMIN: admin/admin123")
+    print("🔓 STORE MGR: mgr1/pass1")
     app.run(host=host, port=port, debug=debug)
-
