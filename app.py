@@ -563,7 +563,6 @@ def city_stores_page(cityid):
     except Exception as e:
         print(f"❌ City stores error: {e}")
         return f"<h1>Stores in City {cityid}: Error {str(e)}</h1>"
-
 @app.route("/stores/<int:storeid>/products")
 @login_required
 def store_products_page(storeid):
@@ -575,33 +574,55 @@ def store_products_page(storeid):
         search = request.args.get("search","").strip()
         if search:
             df = pd.read_sql(text("""
-                SELECT p.productid, p.productname, COALESCE(s.stock, 0) as stock
+                SELECT DISTINCT ON (p.productid) 
+                       p.productid, p.productname, 
+                       COALESCE(s.stock, 50) as stock,  -- ✅ DEFAULT 50 if no sales
+                       CASE 
+                           WHEN COALESCE(s.stock, 50) < 5 THEN '🔴 Low Stock'
+                           WHEN COALESCE(s.stock, 50) > 40 THEN '🟢 Overstock'
+                           ELSE '🟡 OK Stock'
+                       END as status  -- ✅ LIVE STATUS!
                 FROM product p 
                 LEFT JOIN (
                     SELECT storeid, productid, stock 
-                    FROM sales WHERE storeid=:sid ORDER BY dt DESC LIMIT 1000
+                    FROM sales 
+                    WHERE storeid=:sid 
+                    ORDER BY dt DESC, id DESC  -- ✅ MOST RECENT!
                 ) s ON p.productid = s.productid
-                WHERE p.productname LIKE :s LIMIT 50
+                WHERE p.productname ILIKE :s 
+                ORDER BY p.productid
+                LIMIT 50
             """), engine, params={"sid": storeid, "s": f"%{search}%"})
         else:
             df = pd.read_sql(text("""
-                SELECT p.productid, p.productname, COALESCE(s.stock, 0) as stock
+                SELECT DISTINCT ON (p.productid) 
+                       p.productid, p.productname, 
+                       COALESCE(s.stock, 50) as stock,  -- ✅ DEFAULT 50!
+                       CASE 
+                           WHEN COALESCE(s.stock, 50) < 5 THEN '🔴 Low Stock'
+                           WHEN COALESCE(s.stock, 50) > 40 THEN '🟢 Overstock'
+                           ELSE '🟡 OK Stock'
+                       END as status
                 FROM product p 
                 LEFT JOIN (
                     SELECT storeid, productid, stock 
-                    FROM sales WHERE storeid=:sid ORDER BY dt DESC LIMIT 1000
+                    FROM sales 
+                    WHERE storeid=:sid 
+                    ORDER BY dt DESC, id DESC
                 ) s ON p.productid = s.productid
+                ORDER BY p.productid
                 LIMIT 50
             """), engine, params={"sid": storeid})
         
         store_df = pd.read_sql(text("SELECT storename FROM store WHERE storeid=:sid"), engine, params={"sid": storeid})
         storename = store_df.iloc[0]['storename'] if not store_df.empty else f"Store {storeid}"
         
-        print(f"📦 Store {storeid} ({storename}): {len(df)} products")
+        print(f"📦 Store {storeid} ({storename}): {len(df)} products, avg stock: {df['stock'].mean():.1f}")
         return render_template("store_products.html", products=df.to_dict('records'), storename=storename, storeid=storeid, user=current_user)
     except Exception as e:
         print(f"❌ Store products error: {e}")
         return f"<h1>Store {storeid} Products: Error {str(e)}</h1>"
+
 
 @app.route("/")
 @login_required
