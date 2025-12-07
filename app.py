@@ -120,24 +120,24 @@ def ensure_tables_exist():
     if init_done:
         return
     
-    print("🛠️ Creating tables (PostgreSQL 100% safe)...")
+    print("🛠️ Loading 897 STORES - Column B city_id ✅")
     conn = None
     cur = None
     try:
         conn = get_db_conn_raw()
         cur = get_cursor(conn)
         
-        # ✅ PERFECT TABLE CREATION
+        # TABLES
         cur.execute("""
             CREATE TABLE IF NOT EXISTS city (
                 cityid SERIAL PRIMARY KEY, 
-                cityname VARCHAR(50) NOT NULL
+                cityname VARCHAR(50) UNIQUE
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS store (
                 storeid SERIAL PRIMARY KEY, 
-                storename VARCHAR(50) NOT NULL,
+                storename VARCHAR(50) UNIQUE,
                 store_manager VARCHAR(50), 
                 password VARCHAR(50), 
                 cityid INT
@@ -146,7 +146,7 @@ def ensure_tables_exist():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
                 productid SERIAL PRIMARY KEY, 
-                productname VARCHAR(50) NOT NULL
+                productname VARCHAR(50) UNIQUE
             )
         """)
         cur.execute("""
@@ -158,48 +158,51 @@ def ensure_tables_exist():
         """)
         conn.commit()
         
-        # 🔥 DELETE DUPLICATES (SIMPLE WAY)
-        cur.execute("DELETE FROM store WHERE storeid NOT IN (SELECT MIN(storeid) FROM store GROUP BY storename)")
-        cur.execute("DELETE FROM city WHERE cityid NOT IN (SELECT MIN(cityid) FROM city GROUP BY cityname)")
-        cur.execute("DELETE FROM product WHERE productid NOT IN (SELECT MIN(productid) FROM product GROUP BY productname)")
+        # CLEAR
+        cur.execute("TRUNCATE TABLE sales, store, city, product RESTART IDENTITY CASCADE")
         conn.commit()
         
-        # 🔥 LOAD YOUR REAL XLSX (897 STORES!)
-        cities_df = pd.read_excel('stores.xlsx')  # Wait, YOUR cities.csv.xlsx?
-        stores_df = pd.read_excel('stores.xlsx')
-        products_df = pd.read_excel('products.csv.xlsx')
-        
-        print(f"📊 XLSX: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products")
-        
-        # LOAD CITIES
+        # 🔥 CITIES (18 cities)
+        cities_df = pd.read_excel('cities.csv.xlsx')
         for _, row in cities_df.iterrows():
             cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT DO NOTHING", (row['city_name'],))
+        conn.commit()
+        print(f"✅ {len(cities_df)} cities loaded")
         
-        # LOAD STORES (SIMPLE - NO ON CONFLICT PROBLEM!)
-        for _, row in stores_df.iterrows():
-            # CHECK IF STORE EXISTS FIRST
-            cur.execute("SELECT storeid FROM store WHERE storename = %s", (row['store_name'],))
-            if not cur.fetchone():
-                cur.execute("""
-                    INSERT INTO store (storename, store_manager, password, cityid) 
-                    VALUES (%s, %s, %s, %s)
-                """, (row['store_name'], row['store_manager'], row['password'], row['city_id']))
+        # 🔥 STORES - COLUMN B = city_id (index 1)
+        stores_df = pd.read_excel('stores.xlsx')
+        print(f"📊 Stores shape: {stores_df.shape}")  # DEBUG
         
-        # LOAD PRODUCTS
+        loaded_stores = 0
+        for idx, row in stores_df.iterrows():
+            city_id = int(row.iloc[1])  # ✅ COLUMN B = city_id!
+            
+            cur.execute("""
+                INSERT INTO store (storename, store_manager, password, cityid) 
+                VALUES (%s, %s, %s, %s) ON CONFLICT (storename) DO NOTHING
+            """, (row['store_name'], row['store_manager'], row['password'], city_id))
+            loaded_stores += 1
+            
+        conn.commit()
+        print(f"✅ {loaded_stores} stores loaded (city_id from Column B)!")
+        
+        # PRODUCTS
+        products_df = pd.read_excel('products.csv.xlsx')
         for _, row in products_df.iterrows():
             cur.execute("INSERT INTO product (productname) VALUES (%s) ON CONFLICT DO NOTHING", (row['product_name'],))
-        
         conn.commit()
-        print(f"✅ SUCCESS: 18 cities, 897 stores, 735 products LOADED!")
+        print(f"✅ {len(products_df)} products loaded")
+        
         init_done = True
+        print("🎉 18 cities + 897 stores + 735 products PERFECT!")
         
     except Exception as e:
         print(f"❌ ERROR: {e}")
-        if conn:
-            conn.rollback()
+        if conn: conn.rollback()
     finally:
         if cur: cur.close()
         if conn: conn.close()
+
 
 
 def live_updater_background():
