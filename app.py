@@ -152,10 +152,32 @@ def ensure_tables_exist():
             )
         """)
         
-        # SEED DATA
-        cur.execute("INSERT INTO city (cityname) VALUES ('Mumbai'), ('Delhi'), ('Bangalore') ON CONFLICT DO NOTHING")
-        cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1), ('Store2', 'mgr2', 'pass2', 1) ON CONFLICT DO NOTHING")
-        cur.execute("INSERT INTO product (productname) VALUES ('Milk'), ('Bread'), ('Rice'), ('Oil') ON CONFLICT DO NOTHING")
+        # 🔥 LOAD YOUR REAL DATA (XLSX files in ROOT)
+        try:
+            # Cities XLSX
+            cities_df = pd.read_excel('cities.csv.xlsx')
+            for _, row in cities_df.iterrows():
+                cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT DO NOTHING", (row['cityname'],))
+            
+            # Stores XLSX  
+            stores_df = pd.read_excel('stores.xlsx')
+            for _, row in stores_df.iterrows():
+                cur.execute("""
+                    INSERT INTO store (storename, store_manager, password, cityid) 
+                    VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING
+                """, (row['storename'], row['store_manager'], row['password'], row['cityid']))
+            
+            # Products XLSX
+            products_df = pd.read_excel('products.csv.xlsx')
+            for _, row in products_df.iterrows():
+                cur.execute("INSERT INTO product (productname) VALUES (%s) ON CONFLICT DO NOTHING", (row['productname'],))
+            
+            print(f"✅ LOADED: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products!")
+        except (FileNotFoundError, KeyError) as e:
+            print(f"⚠️ XLSX files issue: {e} - using demo data")
+            cur.execute("INSERT INTO city (cityname) VALUES ('Mumbai'), ('Delhi'), ('Bangalore') ON CONFLICT DO NOTHING")
+            cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1), ('Store2', 'mgr2', 'pass2', 1) ON CONFLICT DO NOTHING")
+            cur.execute("INSERT INTO product (productname) VALUES ('Milk'), ('Bread'), ('Rice'), ('Oil') ON CONFLICT DO NOTHING")
         
         conn.commit()
         print("✅ Tables + data ready!")
@@ -166,6 +188,7 @@ def ensure_tables_exist():
     finally:
         if 'cur' in locals(): cur.close()
         if 'conn' in locals(): conn.close()
+
 
 def live_updater_background():
     global all_alerts
@@ -604,9 +627,14 @@ def toggle_theme():
     current_theme = session.get('theme', 'light')
     session['theme'] = 'dark' if current_theme == 'light' else 'light'
     return redirect(request.referrer or url_for('dashboard'))
+# 🔥 START LIVE UPDATER
+def start_live_updater():
+    t = threading.Thread(target=live_updater_background, daemon=True)
+    t.start()
+    print("🚀 Live updater started!")
 
-# Run initialization + app
 if __name__ == "__main__":
+    start_live_updater()  # 🔥 THIS WAS MISSING!
     port = int(os.environ.get('PORT', 5000))
     host = os.environ.get('HOST', '0.0.0.0')
     debug = os.environ.get('DEBUG', 'True').lower() == 'true'
