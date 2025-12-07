@@ -1,7 +1,7 @@
 Flask==3.0.3
 Flask-Login==0.6.3
 SQLAlchemy==2.0.23
-pandas==2.2.2
+pandas==2.1.4          # 🔥 DOWNGRADED (Render compatible)
 mysql-connector-python==9.0.0
 xgboost==2.1.1
 python-dotenv==1.0.1
