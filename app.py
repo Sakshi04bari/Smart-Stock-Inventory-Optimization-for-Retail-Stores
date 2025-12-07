@@ -177,24 +177,39 @@ def ensure_tables_exist():
             conn.commit()
             
             # 2. STORES (YOUR COLUMN ORDER: store_id, city_id, store_name, city_name, store_manager, password)
+            # 2. STORES - DEBUG VERSION (REPLACED)
             cur.execute("SELECT cityid, cityname FROM city")
             city_map = dict(cur.fetchall())
+            print(f"🏙️ City map: {list(city_map.items())[:3]}...")  # DEBUG
+
             successful_stores = 0
-            for _, row in stores_df.iterrows():
-                storename = row['store_name']
-                store_manager = row['store_manager']
-                password = row['password']
-                city_name = row['city_name']
+            failed_stores = 0
+            for idx, row in stores_df.iterrows():
+                print(f"Row {idx}: {list(row.index)}")  # SHOW ACTUAL COLUMN NAMES
+                
+                # TRY MULTIPLE POSSIBLE COLUMN NAMES
+                storename = row.get('store_name') or row.get('store_name ') or row.get('Store_name') or row.iloc[2]
+                store_manager = row.get('store_manager') or row.get('store_manager ') or row.get('Store_manager') or row.iloc[4]
+                password = row.get('password') or row.get('passwwwrod') or row.get('Password') or row.iloc[5]
+                city_name = row.get('city_name') or row.get('city_name ') or row.get('City_name') or row.iloc[3]
                 
                 cityid = city_map.get(city_name)
-                if cityid and storename and store_manager:
-                    cur.execute("""
-                        INSERT INTO store (storename, store_manager, password, cityid) 
-                        VALUES (%s, %s, %s, %s) ON CONFLICT (storename) DO NOTHING
-                    """, (storename, store_manager, password, cityid))
-                    successful_stores += 1
+                if cityid and storename and store_manager and storename.strip():
+                    try:
+                        cur.execute("""
+                            INSERT INTO store (storename, store_manager, password, cityid) 
+                            VALUES (%s, %s, %s, %s) ON CONFLICT (storename) DO NOTHING
+                        """, (storename.strip(), store_manager.strip(), password, cityid))
+                        successful_stores += 1
+                    except Exception as e:
+                        print(f"❌ Store insert fail: {storename} - {e}")
+                        failed_stores += 1
+                else:
+                    failed_stores += 1
+
             conn.commit()
-            
+            print(f"📊 Stores: {successful_stores} success, {failed_stores} failed")
+
             # 3. PRODUCTS
             for _, row in products_df.iterrows():
                 cur.execute("INSERT INTO product (productname) VALUES (%s) ON CONFLICT DO NOTHING", (row['product_name'],))
