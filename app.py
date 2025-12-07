@@ -115,7 +115,6 @@ all_alerts = []
 # 🔥 LIVE UPDATER (15s + AUTO-CREATE TABLES)
 # ----------------------------
 init_done = False
-
 def ensure_tables_exist():
     global init_done
     if init_done:
@@ -126,73 +125,75 @@ def ensure_tables_exist():
         conn = get_db_conn_raw()
         cur = get_cursor(conn)
         
-        # ALL TABLES
+        # 🔥 POSTGRESQL CORRECT SYNTAX (NO "IF NOT EXISTS")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS city (
-                cityid SERIAL PRIMARY KEY, cityname VARCHAR(50)
+                cityid SERIAL PRIMARY KEY, 
+                cityname VARCHAR(50) UNIQUE  -- ✅ BUILT-IN UNIQUE
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS store (
-                storeid SERIAL PRIMARY KEY, storename VARCHAR(50), 
-                store_manager VARCHAR(50), password VARCHAR(50), cityid INT
+                storeid SERIAL PRIMARY KEY, 
+                storename VARCHAR(50) UNIQUE,  -- ✅ BUILT-IN UNIQUE
+                store_manager VARCHAR(50), 
+                password VARCHAR(50), 
+                cityid INT
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
-                productid SERIAL PRIMARY KEY, productname VARCHAR(50)
+                productid SERIAL PRIMARY KEY, 
+                productname VARCHAR(50) UNIQUE  -- ✅ BUILT-IN UNIQUE
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sales (
-                id SERIAL PRIMARY KEY, dt TIMESTAMP, cityid INT, storeid INT, 
-                productid INT, sale_amount INT, stock INT, hour INT, 
-                discount INT, holiday_flag INT, activity_flag INT
+                id SERIAL PRIMARY KEY, 
+                dt TIMESTAMP, cityid INT, storeid INT, 
+                productid INT, sale_amount INT, stock INT, 
+                hour INT, discount INT, holiday_flag INT, activity_flag INT
             )
         """)
-        cur.execute("ALTER TABLE city ADD CONSTRAINT IF NOT EXISTS unique_city UNIQUE(cityname)")
-        cur.execute("ALTER TABLE store ADD CONSTRAINT IF NOT EXISTS unique_store UNIQUE(storename)")
         
-        # 🔥 LOAD YOUR REAL DATA (YOUR column names)
+        # 🔥 CLEAR DUPLICATES FIRST (CRITICAL!)
+        cur.execute("DELETE FROM store")
+        cur.execute("DELETE FROM city") 
+        cur.execute("DELETE FROM product")
+        
+        # 🔥 LOAD YOUR REAL DATA (ONCE ONLY)
         try:
-            # Cities XLSX (column: city_name)
             cities_df = pd.read_excel('cities.csv.xlsx')
             for _, row in cities_df.iterrows():
-                cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT DO NOTHING", (row['city_name'],))
+                cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT (cityname) DO NOTHING", (row['city_name'],))
             
-            # Stores XLSX (A=store_id,B=city_id,C=store_name,D=city_name,E=store_manager,F=password)
             stores_df = pd.read_excel('stores.xlsx')
             for _, row in stores_df.iterrows():
                 cur.execute("""
                     INSERT INTO store (storename, store_manager, password, cityid) 
                     VALUES (%s, %s, %s, %s) ON CONFLICT (storename) DO NOTHING
                 """, (row['store_name'], row['store_manager'], row['password'], row['city_id']))
-
-
             
-            # Products XLSX (column: product_name)
             products_df = pd.read_excel('products.csv.xlsx')
             for _, row in products_df.iterrows():
-                cur.execute("INSERT INTO product (productname) VALUES (%s) ON CONFLICT DO NOTHING", (row['product_name'],))
+                cur.execute("INSERT INTO product (productname) VALUES (%s) ON CONFLICT (productname) DO NOTHING", (row['product_name'],))
             
             print(f"✅ LOADED: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products!")
         except (FileNotFoundError, KeyError) as e:
-            print(f"⚠️ XLSX files issue: {e} - using demo data")
+            print(f"⚠️ XLSX issue: {e} - demo data")
             cur.execute("INSERT INTO city (cityname) VALUES ('Mumbai'), ('Delhi'), ('Bangalore') ON CONFLICT DO NOTHING")
-            cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1), ('Store2', 'mgr2', 'pass2', 1) ON CONFLICT DO NOTHING")
-            cur.execute("INSERT INTO product (productname) VALUES ('Milk'), ('Bread'), ('Rice'), ('Oil') ON CONFLICT DO NOTHING")
+            cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1) ON CONFLICT DO NOTHING")
+            cur.execute("INSERT INTO product (productname) VALUES ('Milk'), ('Bread') ON CONFLICT DO NOTHING")
         
         conn.commit()
-        print("✅ Tables + data ready!")
+        print("✅ Tables + CLEAN data ready!")
         init_done = True
         
     except Exception as e:
         print(f"❌ Table error: {e}")
     finally:
-        if 'cur' in locals(): 
-            cur.close()
-        if 'conn' in locals(): 
-            conn.close()
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
 
 
 
