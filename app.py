@@ -186,6 +186,18 @@ def ensure_tables_exist():
             for _, row in cities_df.iterrows():
                 cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT DO NOTHING", (row['city_name'],))
             conn.commit()
+            # 🔥 SYNC city_id with stores data
+            print("🔗 Syncing city IDs with stores...")
+            store_cities = stores_df['city_id'].dropna().unique()
+            print(f"📍 Stores use city_ids: {sorted(store_cities[:10])}...")
+
+            # Insert missing cities from stores city_id
+            for cid in store_cities:
+                if cid and int(cid) > 0:
+                    cur.execute("INSERT INTO city (cityid, cityname) VALUES (%s, %s) ON CONFLICT (cityid) DO NOTHING", 
+                            (int(cid), f"City_{int(cid)}"))
+            conn.commit()
+
             
             # 2. STORES (YOUR COLUMN ORDER: store_id, city_id, store_name, city_name, store_manager, password)
             # 2. STORES - DEBUG VERSION (REPLACED)
@@ -195,29 +207,36 @@ def ensure_tables_exist():
 
             successful_stores = 0
             failed_stores = 0
-            # 2. STORES - USE city_id DIRECTLY (NO city_name lookup!)
             for idx, row in stores_df.iterrows():
-                # ✅ YOUR PERFECT COLUMNS
                 storename = str(row['store_name']).strip()
                 store_manager = str(row['store_manager']).strip()
                 password = str(row['password'])
-                cityid_raw = row['city_id']  # USE THIS DIRECTLY!
+                cityid_raw = row['city_id']
                 
-                # 🔥 Convert to int, default to 1 if invalid
+                # 🔥 FORCE ALL STORES TO LOAD
                 try:
-                    cityid = int(cityid_raw)
+                    cityid = int(cityid_raw) if cityid_raw else 1
                 except:
-                    cityid = 1  # Mumbai fallback
+                    cityid = 1
                 
-                if storename and store_manager and cityid > 0:
-                    cur.execute("""
-                        INSERT INTO store (storename, store_manager, password, cityid) 
-                        VALUES (%s, %s, %s, %s) ON CONFLICT (storename) DO NOTHING
-                    """, (storename, store_manager, password, cityid))
-                    successful_stores += 1
+                # 🔥 LOAD EVEN IF manager empty - use store name
+                if storename:
+                    try:
+                        cur.execute("""
+                            INSERT INTO store (storename, store_manager, password, cityid) 
+                            VALUES (%s, %s, %s, %s) ON CONFLICT (storename) DO NOTHING
+                        """, (storename, store_manager or 'mgr_default', password or 'pass_default', cityid))
+                        successful_stores += 1
+                    except Exception as e:
+                        failed_stores += 1
+                        if failed_stores < 5:  # Show first 5 errors
+                            print(f"❌ Store {idx} failed: {e}")
+                else:
+                    failed_stores += 1
 
             conn.commit()
-            print(f"✅ STORES LOADED: {successful_stores}/897 using city_id directly!")
+            print(f"✅ STORES: {successful_stores} loaded, {failed_stores} failed")
+            print(f"🏪 Sample stores: {successful_stores > 0 and 'YES' or 'NO'}")
 
 
             # 3. PRODUCTS
