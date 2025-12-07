@@ -191,21 +191,25 @@ def ensure_tables_exist():
             # TRUNCATE & RELOAD
             cur.execute("TRUNCATE TABLE sales, store, city, product RESTART IDENTITY CASCADE")
             conn.commit()
-            
-            # 1. CITIES (city_name column)
-            for _, row in cities_df.iterrows():
-                cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT DO NOTHING", (row['city_name'],))
-            conn.commit()
-            # 🔥 SYNC city_id with stores data
-            print("🔗 Syncing city IDs with stores...")
-            store_cities = stores_df['city_id'].dropna().unique()
-            print(f"📍 Stores use city_ids: {sorted(store_cities[:10])}...")
 
-            # Insert missing cities from stores city_id
-            for cid in store_cities:
-                if cid and int(cid) > 0:
-                    cur.execute("INSERT INTO city (cityid, cityname) VALUES (%s, %s) ON CONFLICT (cityid) DO NOTHING", 
-                            (int(cid), f"City_{int(cid)}"))
+            # 🔥 PERFECT CITY-STORE SYNC (stores.xlsx = AUTHORITATIVE)
+            print("🔗 PERFECT City-Store sync...")
+            store_cities_df = stores_df[['city_id', 'city_name']].dropna().groupby('city_id')['city_name'].first()
+            print(f"📍 Stores expect: {dict(list(store_cities_df.items())[:5])}...")
+
+            # 1. CLEAR & LOAD cities FROM stores.xlsx FIRST
+            cur.execute("DELETE FROM city")
+            conn.commit()
+            for cityid, cityname in store_cities_df.items():
+                if cityid:
+                    cur.execute("INSERT INTO city (cityid, cityname) VALUES (%s, %s)", 
+                            (int(cityid), str(cityname).strip()))
+            conn.commit()
+                
+            # 2. THEN cities.csv.xlsx as fallback
+            for _, row in cities_df.iterrows():
+                cur.execute("INSERT INTO city (cityname) VALUES (%s) ON CONFLICT DO NOTHING", 
+                        (row['city_name'],))
             conn.commit()
 
             
