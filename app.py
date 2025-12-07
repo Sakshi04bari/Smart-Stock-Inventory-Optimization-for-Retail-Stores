@@ -144,6 +144,24 @@ def ensure_tables_exist():
             )
         """)
         cur.execute("""
+    CREATE TABLE IF NOT EXISTS store (
+        storeid SERIAL PRIMARY KEY, 
+        storename VARCHAR(50) NOT NULL,
+        store_manager VARCHAR(50), 
+        password VARCHAR(50), 
+        cityid INT REFERENCES city(cityid)
+    )
+""")
+
+        # 🔥 ADD THESE 2 LINES:
+        cur.execute("""
+            ALTER TABLE store 
+            ADD CONSTRAINT IF NOT EXISTS store_storename_unique 
+            UNIQUE (storename)
+        """)
+
+
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
                 productid SERIAL PRIMARY KEY, 
                 productname VARCHAR(50) NOT NULL UNIQUE
