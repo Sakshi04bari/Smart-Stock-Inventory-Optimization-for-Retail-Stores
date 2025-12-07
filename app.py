@@ -143,22 +143,15 @@ def ensure_tables_exist():
                 cityid INT REFERENCES city(cityid)
             )
         """)
-        cur.execute("""
-    CREATE TABLE IF NOT EXISTS store (
-        storeid SERIAL PRIMARY KEY, 
-        storename VARCHAR(50) NOT NULL,
-        store_manager VARCHAR(50), 
-        password VARCHAR(50), 
-        cityid INT REFERENCES city(cityid)
-    )
-""")
-
-        # 🔥 ADD THESE 2 LINES:
-        cur.execute("""
-            ALTER TABLE store 
-            ADD CONSTRAINT IF NOT EXISTS store_storename_unique 
-            UNIQUE (storename)
-        """)
+        try:
+            cur.execute("""
+                ALTER TABLE store 
+                ADD CONSTRAINT store_storename_unique 
+                UNIQUE (storename)
+            """)
+            print("✅ UNIQUE constraint added")
+        except:
+            print("ℹ️ UNIQUE constraint already exists")
 
 
         cur.execute("""
