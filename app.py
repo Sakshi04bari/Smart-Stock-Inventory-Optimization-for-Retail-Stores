@@ -120,80 +120,95 @@ def ensure_tables_exist():
     if init_done:
         return
     
-    print("🛠️ Creating tables (Gunicorn-safe)...")
+    print("🛠️ Creating tables (PostgreSQL-safe)...")
+    conn = None
+    cur = None
     try:
         conn = get_db_conn_raw()
         cur = get_cursor(conn)
         
-        # ✅ POSTGRESQL TABLES WITH PROPER CONSTRAINT NAMES
+        # ✅ POSTGRESQL: UNIQUE DIRECTLY IN CREATE TABLE
         cur.execute("""
             CREATE TABLE IF NOT EXISTS city (
                 cityid SERIAL PRIMARY KEY, 
-                cityname VARCHAR(50)
+                cityname VARCHAR(50) UNIQUE
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS store (
                 storeid SERIAL PRIMARY KEY, 
-                storename VARCHAR(50), 
+                storename VARCHAR(50) UNIQUE,
                 store_manager VARCHAR(50), 
                 password VARCHAR(50), 
-                cityid INT,
-                UNIQUE(storename)
+                cityid INT REFERENCES city(cityid)
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
                 productid SERIAL PRIMARY KEY, 
-                productname VARCHAR(50),
-                UNIQUE(productname)
+                productname VARCHAR(50) UNIQUE
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sales (
-                id SERIAL PRIMARY KEY, dt TIMESTAMP, cityid INT, storeid INT, 
-                productid INT, sale_amount INT, stock INT, hour INT, 
-                discount INT, holiday_flag INT, activity_flag INT
+                id SERIAL PRIMARY KEY, 
+                dt TIMESTAMP, cityid INT, storeid INT, 
+                productid INT, sale_amount INT, stock INT, 
+                hour INT, discount INT, holiday_flag INT, activity_flag INT
             )
         """)
         
-        # 🔥 CLEAR OLD DATA
-        cur.execute("TRUNCATE TABLE store, city, product RESTART IDENTITY CASCADE")
+        conn.commit()  # Commit table creation FIRST
         
-        # 🔥 LOAD CLEAN DATA
+        # 🔥 CLEAR + LOAD YOUR REAL XLSX DATA
         try:
             cities_df = pd.read_excel('cities.csv.xlsx')
+            stores_df = pd.read_excel('stores.xlsx')
+            products_df = pd.read_excel('products.csv.xlsx')
+            
+            print(f"📊 Found XLSX: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products")
+            
+            # CLEAR OLD DATA
+            cur.execute("TRUNCATE TABLE sales, store, city, product RESTART IDENTITY CASCADE")
+            conn.commit()
+            
+            # LOAD CITIES FIRST
             for _, row in cities_df.iterrows():
                 cur.execute("INSERT INTO city (cityname) VALUES (%s)", (row['city_name'],))
+            conn.commit()
             
-            stores_df = pd.read_excel('stores.xlsx')
+            # LOAD STORES (with correct city_id mapping)
             for _, row in stores_df.iterrows():
                 cur.execute("""
                     INSERT INTO store (storename, store_manager, password, cityid) 
                     VALUES (%s, %s, %s, %s)
                     ON CONFLICT (storename) DO NOTHING
                 """, (row['store_name'], row['store_manager'], row['password'], row['city_id']))
+            conn.commit()
             
-            products_df = pd.read_excel('products.csv.xlsx')
+            # LOAD PRODUCTS
             for _, row in products_df.iterrows():
                 cur.execute("INSERT INTO product (productname) VALUES (%s)", (row['product_name'],))
+            conn.commit()
             
-            print(f"✅ LOADED: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products!")
+            print(f"✅ LOADED REAL DATA: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products!")
+            
+        except FileNotFoundError:
+            print("❌ XLSX files missing - check git add stores.xlsx etc")
+            raise Exception("Upload XLSX files to repo!")
         except Exception as e:
-            print(f"⚠️ XLSX: {e} - demo data")
-            cur.execute("INSERT INTO city (cityname) VALUES ('Mumbai'), ('Delhi'), ('Bangalore')")
-            cur.execute("INSERT INTO store (storename, store_manager, password, cityid) VALUES ('Store1', 'mgr1', 'pass1', 1)")
+            print(f"❌ XLSX error: {e}")
+            raise
         
-        conn.commit()
-        print("✅ CLEAN data ready!")
         init_done = True
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ CRITICAL ERROR: {e}")
+        if conn:
+            conn.rollback()
     finally:
-        if 'cur' in locals(): cur.close()
-        if 'conn' in locals(): conn.close()
-
+        if cur: cur.close()
+        if conn: conn.close()
 
 
 def live_updater_background():
