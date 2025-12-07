@@ -111,6 +111,7 @@ def load_user(user_id):
 # Live Alerts Storage
 # ----------------------------
 all_alerts = []
+all_forecasts = [] 
 # ----------------------------
 # 🔥 LIVE UPDATER (15s + AUTO-CREATE TABLES)
 # ----------------------------
@@ -189,7 +190,10 @@ def ensure_tables_exist():
             print(f"📊 Found: {len(cities_df)} cities, {len(stores_df)} stores, {len(products_df)} products")
             
             # TRUNCATE & RELOAD
-            cur.execute("TRUNCATE TABLE sales, store, city, product RESTART IDENTITY CASCADE")
+            cur.execute("TRUNCATE TABLE sales")
+            cur.execute("TRUNCATE TABLE store") 
+            cur.execute("TRUNCATE TABLE city")
+            cur.execute("TRUNCATE TABLE product")
             conn.commit()
 
             # 🔥 PERFECT CITY-STORE SYNC (stores.xlsx = AUTHORITATIVE)
@@ -359,6 +363,10 @@ def live_updater_background():
                 "timestamp": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             all_alerts.append(alert)
+            # ADD after line ~480 (inside while True, after alert.append):
+            if random.random() < 0.1:  # 10% chance per sale
+                run_xgboost_forecast(conn, cur)  # YOUR MODEL!
+
             if len(all_alerts) > 10000:
                 all_alerts = all_alerts[-10000:]
 
@@ -367,6 +375,61 @@ def live_updater_background():
     finally:
         cur.close()
         conn.close()
+def run_xgboost_forecast(conn, cur):
+    global all_forecasts
+    try:
+        now = datetime.now()
+        past_30_days = now - timedelta(days=30)
+        
+        # YOUR EXACT QUERY
+        df = pd.read_sql(text("""
+            SELECT storeid, productid, dt, sale_amount, stock, discount, holiday_flag, activity_flag
+            FROM sales WHERE dt >= :past
+            ORDER BY dt ASC
+        """), engine, params={"past": past_30_days})
+        
+        df['dt'] = pd.to_datetime(df['dt'])
+        df['day_of_week'] = df['dt'].dt.dayofweek
+        
+        forecasts = []
+        df['day_of_week'] = df['dt'].dt.dayofweek
+        for (s_id, p_id), group in df.groupby(['storeid','productid']):
+            if len(group) < 7:
+                predicted_sales_7d = group['sale_amount'].mean() * 7 if len(group)>0 else 20
+            else:
+                X = group[['day_of_week','stock','discount','holiday_flag','activity_flag']]
+                y = group['sale_amount']
+                model = xgb.XGBRegressor(objective='reg:squarederror', n_estimators=50)
+                model.fit(X, y)
+                
+                last_row = group.iloc[-1]
+                predictions = []
+                for i in range(1,8):
+                    day_of_week = (last_row['day_of_week'] + i) % 7
+                    X_pred = pd.DataFrame([{
+                        'day_of_week': day_of_week, 'stock': last_row['stock'],
+                        'discount': last_row['discount'], 'holiday_flag': last_row['holiday_flag'],
+                        'activity_flag': last_row['activity_flag']
+                    }])
+                    pred_sale = model.predict(X_pred)[0]
+                    predictions.append(pred_sale)
+                predicted_sales_7d = sum(predictions)
+            
+            forecast_alert = "🔴 Restock Likely" if predicted_sales_7d > 40 else "🟢 Stock OK"
+            forecasts.append({
+                'storeid': s_id, 'productid': p_id,
+                'predicted_7d_sales': round(predicted_sales_7d, 1),
+                'forecast_alert': forecast_alert,
+                'timestamp': now.strftime("%H:%M:%S")
+            })
+        
+        all_forecasts = forecasts[-100:]  # Keep latest 100
+        print(f"🔮 XGBoost: {len(forecasts)} forecasts generated!")
+        return forecasts
+        
+    except Exception as e:
+        print(f"⚠️ Forecast error: {e}")
+        return []
 
 # ----------------------------
 # ROUTES
@@ -644,6 +707,8 @@ def dashboard():
     overstock_count = len([a for a in alerts if "Overstock" in a['stock_alert']])
     okstock_count = len([a for a in alerts if "Stock OK" in a['stock_alert']])
     total_count = len(alerts)
+    forecast_restocks = len([f for f in all_forecasts if "Restock" in f['forecast_alert']])
+    forecast_ok = len(all_forecasts) - forecast_restocks
     
     return render_template("dashboard.html", 
                          alerts=alerts, 
@@ -651,6 +716,9 @@ def dashboard():
                          overstock_count=overstock_count,
                          okstock_count=okstock_count,
                          total_count=total_count,
+                         forecast_restocks=forecast_restocks,    
+                         forecast_ok=forecast_ok,                
+                         forecasts=all_forecasts[-10:], 
                          title=title,
                          subtitle=subtitle,
                          my_store_link=my_store_link,
@@ -735,4 +803,7 @@ if __name__ == "__main__":
     print("🌟 SmartStock Dashboard ready!")
     print("🔓 ADMIN: admin/admin123")
     print("🔓 STORE MGR: mgr1/pass1")
+    # Add to app.py (line 600, before app.run):
+    print(f"🧵 Threads alive: {threading.active_count()}")
+    print(f"Live thread: {live_thread is not None and live_thread.is_alive()}")
     app.run(host=host, port=port, debug=debug)
