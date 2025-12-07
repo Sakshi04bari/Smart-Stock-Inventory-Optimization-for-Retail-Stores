@@ -37,13 +37,14 @@ engine_url = URL.create(
     port=DB_PORT,
     database=DB_NAME
 )
+# RIGHT AFTER THIS LINE (line 54):
 engine = create_engine(engine_url, pool_pre_ping=True)
 
-# 🔥 FIXED: PostgreSQL + MySQL Support (ONLY CHANGE)
+# 🔥 PASTE THESE 2 FUNCTIONS HERE:
 def get_db_conn_raw():
     db_url = os.getenv('DATABASE_URL')
     if db_url and 'postgres' in db_url:
-        # Render PostgreSQL
+        from psycopg2.extras import RealDictCursor
         parsed = urlparse(db_url)
         return psycopg2.connect(
             host=parsed.hostname,
@@ -51,13 +52,17 @@ def get_db_conn_raw():
             user=parsed.username,
             password=parsed.password,
             database=parsed.path[1:]
-        )
+        ), RealDictCursor
     else:
-        # Local MySQL
         return mysql.connector.connect(
             host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME
-        )
+        ), None
 
+def get_cursor(conn):
+    if isinstance(conn, tuple):  # PostgreSQL
+        real_conn, cursor_factory = conn
+        return real_conn.cursor(cursor_factory)
+    return conn.cursor(dictionary=True)  # MySQL
 
 # ----------------------------
 # Flask + Login (FIXED)
@@ -110,7 +115,7 @@ all_alerts = []
 def live_updater_background():
     global all_alerts
     conn = get_db_conn_raw()
-    cur = conn.cursor()
+    cur = get_cursor(conn)
 
     cur.execute("SELECT productid, productname FROM product")
     products = cur.fetchall()
@@ -197,7 +202,7 @@ def login():
         print(f"🔓 LOGIN ATTEMPT: {username}/{password}")
         
         conn = get_db_conn_raw()
-        cursor = conn.cursor(dictionary=True)
+        cursor = get_cursor(conn)
         
         # STORE MANAGER LOGIN
         cursor.execute("SELECT * FROM store WHERE store_manager = %s AND password = %s", (username, password))
@@ -295,7 +300,7 @@ def admin_stores():
     
     search = request.args.get('search', '').strip()
     conn = get_db_conn_raw()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn)
     
     if search:
         cursor.execute("""
