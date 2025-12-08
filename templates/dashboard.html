@@ -145,7 +145,7 @@
                         ${alert.stock_alert}
                     </span>
                 </td>
-                <td>${alert.forecast_alert || 'N/A'}</td>
+               <td>{{ alert.get('forecast', '🟢 Stock OK') }}</td> 
             `;
         });
     }

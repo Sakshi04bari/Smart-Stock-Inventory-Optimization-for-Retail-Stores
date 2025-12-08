@@ -1,6 +1,6 @@
 # app.py - COMPLETE SmartStock Dashboard (POSTGRESQL ✅ + LIVE UPDATES FIXED ✅)
 import threading, time, random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
@@ -338,13 +338,23 @@ def live_updater_background():
             activity_flag = random.choice([0,1])
             hour = now.hour
 
+                        # 🔥 1. IST TIME FIRST
+            now_utc = datetime.now()
+            ist_offset = timedelta(hours=5, minutes=30)
+            now_ist = now_utc + ist_offset
+            hour = now_ist.hour
+
+            # 🔥 2. INSERT SALE with IST TIME
             cur.execute("""
                 INSERT INTO sales (dt, cityid, storeid, productid, sale_amount, stock, hour, discount, holiday_flag, activity_flag)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (now, cityid, storeid, productid, sale_amount, new_stock, hour, discount, holiday_flag, activity_flag))
+            """, (now_ist, cityid, storeid, productid, sale_amount, new_stock, hour, discount, holiday_flag, activity_flag))
             conn.commit()
 
-            # 🔥 BETTER ALERTS
+            # 🔥 3. RUN FORECAST (NOW has data!)
+            recent_forecasts = run_xgboost_forecast(conn, cur)
+
+            # 🔥 4. STOCK ALERT
             if random.random() < 0.35:  # 35% Overstock
                 new_stock += random.randint(35, 60)
                 stock_alert = "Overstock 🚨"
@@ -354,26 +364,32 @@ def live_updater_background():
             else:  # 40% OK
                 stock_alert = "Stock OK ✅"
 
+            # 🔥 5. MATCH FORECAST for THIS store+product
+            forecast_alert = "🟢 Stock OK"
+            if recent_forecasts:
+                for f in recent_forecasts:
+                    if f['storeid'] == storeid and f['productid'] == productid:
+                        forecast_alert = f['forecast_alert']
+                        break
+
+            # 🔥 6. PERFECT ALERT (REAL forecast + IST time!)
             alert = {
                 "city": cityname,
                 "store": storename,
-                "storeid": storeid,
                 "product": productname,
                 "sale": int(sale_amount),
                 "stock": int(new_stock),
                 "stock_alert": stock_alert,
-                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S")
+                "forecast": forecast_alert,           # ✅ 🔴Restock Likely
+                "timestamp": now_ist.strftime("%Y-%m-%d %H:%M:%S")  # ✅ 16:30 IST
             }
             all_alerts.append(alert)
-            # ADD after line ~480 (inside while True, after alert.append):
-            if random.random() < 0.1:  # 10% chance per sale
-                run_xgboost_forecast(conn, cur)  # YOUR MODEL!
 
             if len(all_alerts) > 10000:
                 all_alerts = all_alerts[-10000:]
 
-            print(f"[{alert['timestamp']}] {alert['city']} / {alert['store']} / {alert['product']} → {alert['stock_alert']}")
-            time.sleep(SALE_INTERVAL)
+            print(f"[{alert['timestamp']}] {alert['city']} / {alert['store']} / {alert['product']} → {alert['stock_alert']} | {alert['forecast']}")
+
     finally:
         cur.close()
         conn.close()
