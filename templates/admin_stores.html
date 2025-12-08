@@ -12,7 +12,9 @@
                 <i class="fas fa-chart-line me-2"></i>SmartStock Dashboard
             </a>
             <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="/dashboard"><i class="fas fa-home"></i> Dashboard</a>
+                 <a class="nav-link {% if active == 'dashboard' %}active fw-bold{% endif %}" href="/">
+                        <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                    </a>
                 <a class="nav-link" href="/overstock"><i class="fas fa-boxes"></i> Overstock</a>
                 <a class="nav-link" href="/understock"><i class="fas fa-exclamation-triangle"></i> Understock</a>
                 <a class="nav-link active" href="/admin/stores"><i class="fas fa-store"></i> Stores ({{ stores|length }})</a>
