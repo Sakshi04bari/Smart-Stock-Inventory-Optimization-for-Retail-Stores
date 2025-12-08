@@ -628,6 +628,7 @@ def city_stores_page(cityid):
     except Exception as e:
         print(f"❌ City stores error: {e}")
         return f"<h1>Stores in City {cityid}: Error {str(e)}</h1>"
+
 @app.route("/stores/<int:storeid>/products")
 @login_required
 def store_products_page(storeid):
@@ -638,66 +639,47 @@ def store_products_page(storeid):
     try:
         search = request.args.get("search","").strip()
         
-        # 🔥 NEW QUERY: Products by TOTAL SALES!
+        # 🔥 FIXED: Products by TOTAL SALES (PostgreSQL SAFE!)
+        sql_query = """
+            SELECT 
+                p.productid,
+                p.productname,
+                COALESCE(s_latest.stock, 50) as stock,
+                COALESCE(sales_sum.total_sales, 0) as total_sales,
+                CASE
+                    WHEN COALESCE(s_latest.stock, 50) < 5 THEN '🔴 Low Stock'
+                    WHEN COALESCE(s_latest.stock, 50) > 40 THEN '🟢 Overstock'
+                    ELSE '🟡 OK Stock'
+                END as status
+            FROM product p
+            LEFT JOIN (
+                SELECT storeid, productid, stock
+                FROM sales s1
+                WHERE storeid = :sid 
+                AND s1.id = (
+                    SELECT MAX(s2.id) 
+                    FROM sales s2 
+                    WHERE s2.storeid = s1.storeid 
+                    AND s2.productid = s1.productid
+                )
+            ) s_latest ON p.productid = s_latest.productid
+            LEFT JOIN (
+                SELECT productid, SUM(sale_amount) as total_sales
+                FROM sales
+                WHERE storeid = :sid
+                GROUP BY productid
+            ) sales_sum ON p.productid = sales_sum.productid
+        """
+
         if search:
-            df = pd.read_sql(text("""
-                SELECT DISTINCT ON (p.productid)
-                    p.productid,
-                    p.productname,
-                    COALESCE(s_latest.stock, 50) as stock,
-                    COALESCE(sales_sum.total_sales, 0) as total_sales,
-                    CASE
-                        WHEN COALESCE(s_latest.stock, 50) < 5 THEN '🔴 Low Stock'
-                        WHEN COALESCE(s_latest.stock, 50) > 40 THEN '🟢 Overstock'
-                        ELSE '🟡 OK Stock'
-                    END as status
-                FROM product p
-                LEFT JOIN (
-                    SELECT storeid, productid, stock
-                    FROM sales
-                    WHERE storeid = :sid
-                    ORDER BY dt DESC, id DESC
-                    LIMIT 1000
-                ) s_latest ON p.productid = s_latest.productid
-                LEFT JOIN (
-                    SELECT productid, SUM(sale_amount) as total_sales
-                    FROM sales
-                    WHERE storeid = :sid
-                    GROUP BY productid
-                ) sales_sum ON p.productid = sales_sum.productid
-                WHERE p.productname ILIKE :s
-                ORDER BY total_sales DESC NULLS LAST
-                LIMIT 50
-            """), engine, params={"sid": storeid, "s": f"%{search}%"})
-        else:
-            df = pd.read_sql(text("""
-                SELECT DISTINCT ON (p.productid)
-                    p.productid,
-                    p.productname,
-                    COALESCE(s_latest.stock, 50) as stock,
-                    COALESCE(sales_sum.total_sales, 0) as total_sales,
-                    CASE
-                        WHEN COALESCE(s_latest.stock, 50) < 5 THEN '🔴 Low Stock'
-                        WHEN COALESCE(s_latest.stock, 50) > 40 THEN '🟢 Overstock'
-                        ELSE '🟡 OK Stock'
-                    END as status
-                FROM product p
-                LEFT JOIN (
-                    SELECT storeid, productid, stock
-                    FROM sales
-                    WHERE storeid = :sid
-                    ORDER BY dt DESC, id DESC
-                    LIMIT 1000
-                ) s_latest ON p.productid = s_latest.productid
-                LEFT JOIN (
-                    SELECT productid, SUM(sale_amount) as total_sales
-                    FROM sales
-                    WHERE storeid = :sid
-                    GROUP BY productid
-                ) sales_sum ON p.productid = sales_sum.productid
-                ORDER BY total_sales DESC NULLS LAST
-                LIMIT 50
-            """), engine, params={"sid": storeid})
+            sql_query += " WHERE p.productname ILIKE :s"
+
+        sql_query += """
+            ORDER BY total_sales DESC NULLS LAST
+            LIMIT 50
+        """
+
+        df = pd.read_sql(text(sql_query), engine, params={"sid": storeid, "s": f"%{search}%"} if search else {"sid": storeid})
         
         store_df = pd.read_sql(text("SELECT storename FROM store WHERE storeid=:sid"), engine, params={"sid": storeid})
         storename = store_df.iloc[0]['storename'] if not store_df.empty else f"Store {storeid}"
