@@ -1,6 +1,0 @@
-Flask>=2.0
-pandas
-numpy
-joblib
-xgboost
-plotly
