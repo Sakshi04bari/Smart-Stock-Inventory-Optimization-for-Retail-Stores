@@ -351,6 +351,16 @@ def live_updater_background():
             """, (now_ist, cityid, storeid, productid, sale_amount, new_stock, hour, discount, holiday_flag, activity_flag))
             conn.commit()
 
+            # 🔥 3. GET LATEST STOCK (THIS IS YOUR QUERY - RIGHT AFTER INSERT!)
+            cur.execute(
+                "SELECT stock FROM sales WHERE storeid=%s AND productid=%s ORDER BY dt DESC LIMIT 1",
+                (storeid, productid)
+            )
+            r = cur.fetchone()
+            current_stock = r[0] if r else new_stock  # Use DB stock or fallback
+            new_stock = max(current_stock - sale_amount, 0)  # Recalculate
+
+
             # 🔥 3. RUN FORECAST (NOW has data!)
             recent_forecasts = run_xgboost_forecast(conn, cur)
 
@@ -376,6 +386,7 @@ def live_updater_background():
             alert = {
                 "city": cityname,
                 "store": storename,
+                 "storeid": storeid,
                 "product": productname,
                 "sale": int(sale_amount),
                 "stock": int(new_stock),
@@ -448,6 +459,40 @@ def run_xgboost_forecast(conn, cur):
     except Exception as e:
         print(f"⚠️ Forecast error: {e}")
         return []
+def get_fresh_alerts_from_db(limit=100):
+    """🔥 Get REAL latest alerts from sales table"""
+    try:
+        conn = get_db_conn_raw()
+        cur = get_cursor(conn)
+        cur.execute("""
+            SELECT 
+                c.cityname, s.storename, storeid, p.productname,
+                sale_amount, stock, dt
+            FROM sales sa
+            JOIN store s ON sa.storeid = s.storeid
+            JOIN city c ON s.cityid = c.cityid
+            JOIN product p ON sa.productid = p.productid
+            ORDER BY sa.dt DESC LIMIT %s
+        """, (limit,))
+        
+        alerts = []
+        for row in cur.fetchall():
+            city, store, storeid, product, sale, stock, dt = row
+            stock_alert = "Restock Needed ⚠️" if stock < 5 else "Overstock 🚨" if stock > 40 else "Stock OK ✅"
+            alerts.append({
+                'city': city, 'store': store, 'storeid': storeid,
+                'product': product, 'sale': sale, 'stock': stock,
+                'stock_alert': stock_alert, 'forecast': '🟢 From DB',
+                'timestamp': dt.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        cur.close()
+        conn.close()
+        print(f"🔥 DB Fresh alerts: {len(alerts)}")
+        return alerts
+    except Exception as e:
+        print(f"⚠️ DB alerts error: {e}")
+        return []
+
 
 # ----------------------------
 # ROUTES
@@ -512,8 +557,10 @@ def my_store_dashboard():
         return redirect(url_for('dashboard'))
     
     storeid = current_user.storeid
-    store_alerts = [a for a in all_alerts if a.get('storeid') == storeid]
-    alerts = list(reversed(store_alerts[-30:]))
+    # 🔥 FRESH DATA
+    fresh_db = get_fresh_alerts_from_db(limit=100)
+    all_store_alerts = [a for a in fresh_db + all_alerts if a.get('storeid') == storeid]
+    alerts = list(reversed(all_store_alerts[-30:]))
     
     understock_count = len([a for a in alerts if "Restock Needed" in a['stock_alert']])
     overstock_count = len([a for a in alerts if "Overstock" in a['stock_alert']])
@@ -714,25 +761,29 @@ def store_products_page(storeid):
 @app.route("/")
 @login_required
 def dashboard():
+    # 🔥 FORCE FRESH DATA - Read LAST 50 from DB + MEMORY
+    fresh_alerts = get_fresh_alerts_from_db(limit=100)  # NEW FUNCTION
+    
     if current_user.role == 'store_manager':
         user_storeid = current_user.storeid
-        store_alerts = [a for a in all_alerts if a.get('storeid') == user_storeid]
+        store_alerts = [a for a in fresh_alerts + all_alerts if a.get('storeid') == user_storeid]
         alerts = list(reversed(store_alerts[-50:]))
         title = f"🛒 {current_user.storename} Dashboard"
-        subtitle = f"Showing only {current_user.storename} updates"
+        subtitle = f"Showing only {current_user.storename} updates ({len(alerts)} fresh)"
         my_store_link = url_for('my_store_dashboard')
     else:
-        alerts = list(reversed(all_alerts[-50:]))
+        # 🔥 ADMIN: Combine DB + Memory, take freshest 50
+        combined_alerts = fresh_alerts + all_alerts
+        alerts = list(reversed(combined_alerts))[-50:]
         title = "🌟 SmartStock Admin Dashboard"
-        subtitle = "All stores - Live updates"
+        subtitle = f"All stores - {len(alerts)} live updates"
         my_store_link = None
     
+    # 🔥 Calculate counts from FRESH data
     understock_count = len([a for a in alerts if "Restock Needed" in a['stock_alert']])
     overstock_count = len([a for a in alerts if "Overstock" in a['stock_alert']])
     okstock_count = len([a for a in alerts if "Stock OK" in a['stock_alert']])
     total_count = len(alerts)
-    forecast_restocks = len([f for f in all_forecasts if "Restock" in f['forecast_alert']])
-    forecast_ok = len(all_forecasts) - forecast_restocks
     
     return render_template("dashboard.html", 
                          alerts=alerts, 
@@ -740,60 +791,81 @@ def dashboard():
                          overstock_count=overstock_count,
                          okstock_count=okstock_count,
                          total_count=total_count,
-                         forecast_restocks=forecast_restocks,    
-                         forecast_ok=forecast_ok,                
+                         forecast_restocks=len([f for f in all_forecasts if "Restock" in f['forecast_alert']]),     
+                         forecast_ok=len(all_forecasts) - len([f for f in all_forecasts if "Restock" in f['forecast_alert']]),                
                          forecasts=all_forecasts[-10:], 
                          title=title,
                          subtitle=subtitle,
                          my_store_link=my_store_link,
-                         user=current_user)
+                         user=current_user,
+                         CACHE_BUST=f"{int(time.time())}")  # 🔥 Cache buster!
+
 
 @app.route("/overstock")
 @login_required
 def overstock_page():
+    # 🔥 FRESH DATA FROM DB + MEMORY
+    fresh_db = get_fresh_alerts_from_db(limit=200)
+    combined_alerts = fresh_db + all_alerts
+    
     if current_user.role == 'store_manager':
         user_storeid = current_user.storeid
-        alerts = [a for a in reversed(all_alerts) if "Overstock" in a['stock_alert'] and a.get('storeid') == user_storeid]
-        page_title = f"{current_user.storename} - Overstock Alerts"
+        alerts = [a for a in reversed(combined_alerts) if "Overstock" in a['stock_alert'] and a.get('storeid') == user_storeid]
+        page_title = f"{current_user.storename} - Overstock Alerts ({len(alerts)})"
     else:
-        alerts = [a for a in reversed(all_alerts) if "Overstock" in a['stock_alert']]
-        page_title = "All Stores - Overstock Alerts"
+        alerts = [a for a in reversed(combined_alerts) if "Overstock" in a['stock_alert']]
+        page_title = f"All Stores - Overstock Alerts ({len(alerts)})"
+    
     return render_template("overstock.html", alerts=alerts[-20:], title=page_title, user=current_user)
 
 @app.route("/understock")
 @login_required
 def understock_page():
+    # 🔥 FRESH DATA FROM DB + MEMORY  
+    fresh_db = get_fresh_alerts_from_db(limit=200)
+    combined_alerts = fresh_db + all_alerts
+    
     if current_user.role == 'store_manager':
         user_storeid = current_user.storeid
-        alerts = [a for a in reversed(all_alerts) if "Restock" in a['stock_alert'] and a.get('storeid') == user_storeid]
-        page_title = f"{current_user.storename} - Understock Alerts"
+        alerts = [a for a in reversed(combined_alerts) if "Restock" in a['stock_alert'] and a.get('storeid') == user_storeid]
+        page_title = f"{current_user.storename} - Understock Alerts ({len(alerts)})"
     else:
-        alerts = [a for a in reversed(all_alerts) if "Restock" in a['stock_alert']]
-        page_title = "All Stores - Understock Alerts"
+        alerts = [a for a in reversed(combined_alerts) if "Restock" in a['stock_alert']]
+        page_title = f"All Stores - Understock Alerts ({len(alerts)})"
+    
     return render_template("understock.html", alerts=alerts[-20:], title=page_title, user=current_user)
 
 @app.route("/ok-stock")
 @login_required
 def ok_stock_page():
+    # 🔥 FRESH DATA FROM DB + MEMORY
+    fresh_db = get_fresh_alerts_from_db(limit=200)
+    combined_alerts = fresh_db + all_alerts
+    
     if current_user.role == 'store_manager':
         user_storeid = current_user.storeid
-        alerts = [a for a in reversed(all_alerts) if "Stock OK" in a['stock_alert'] and a.get('storeid') == user_storeid]
-        page_title = f"{current_user.storename} - Stock OK"
+        alerts = [a for a in reversed(combined_alerts) if "Stock OK" in a['stock_alert'] and a.get('storeid') == user_storeid]
+        page_title = f"{current_user.storename} - Stock OK ({len(alerts)})"
     else:
-        alerts = [a for a in reversed(all_alerts) if "Stock OK" in a['stock_alert']]
-        page_title = "All Stores - Stock OK"
+        alerts = [a for a in reversed(combined_alerts) if "Stock OK" in a['stock_alert']]
+        page_title = f"All Stores - Stock OK ({len(alerts)})"
+    
     return render_template("ok_stock.html", alerts=alerts[-20:], title=page_title, user=current_user)
 
 @app.route("/api/alerts")
 @login_required
 def get_alerts_api():
     n = int(request.args.get("n", 200))
+    fresh_db = get_fresh_alerts_from_db(limit=n*2)  # 🔥 FRESH!
+    combined = fresh_db + all_alerts
+    
     if current_user.role == 'store_manager':
         user_storeid = current_user.storeid
-        alerts = [a for a in reversed(all_alerts) if a.get('storeid') == user_storeid][-n:]
+        alerts = [a for a in reversed(combined) if a.get('storeid') == user_storeid][-n:]
     else:
-        alerts = list(reversed(all_alerts))[-n:]
+        alerts = list(reversed(combined))[-n:]
     return jsonify(alerts)
+
 
 @app.route("/toggle-theme")
 @login_required
