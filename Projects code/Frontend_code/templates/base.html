@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ session.get('theme', 'light') }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SmartStock{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/theme.css') }}" rel="stylesheet">
+</head>
+<body class="bg-gradient min-vh-100">
+    <!-- 🌙 THEME TOGGLE BUTTON (Top Right) -->
+    <div class="position-fixed end-0 top-50 translate-middle-y me-4 z-3" style="margin-top: -50px;">
+        <button id="theme-toggle" class="btn btn-outline-light rounded-circle shadow-lg p-2" 
+                title="Toggle Dark/Light Mode" style="width: 50px; height: 50px;">
+            <i class="fas fa-moon"></i>
+        </button>
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-lg fixed-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-warehouse me-2"></i>SmartStock
+            </a>
+            
+            {% if current_user.is_authenticated %}
+            <!-- User Info -->
+            <span class="navbar-text me-3">
+                <i class="fas fa-user me-1"></i>{{ current_user.username }} 
+                <span class="badge bg-light text-dark fs-6">{{ current_user.role|upper() }}</span>
+            </span>
+            {% endif %}
+
+            <div class="navbar-nav ms-auto">
+                {% if current_user.is_authenticated %}
+                    {% if current_user.role == 'store_manager' %}
+                        <a class="nav-link {% if active == 'store' %}active fw-bold{% endif %}" href="/store-manager">
+                            <i class="fas fa-store me-1"></i>My Store
+                        </a>
+                    {% endif %}
+                    
+                    <a class="nav-link {% if active == 'dashboard' %}active fw-bold{% endif %}" href="/">
+                        <i class="fas fa-tachometer-alt me-1"></i><B>Dashboard</B>
+                    </a>
+                    <a class="nav-link {% if active == 'overstock' %}active fw-bold{% endif %}" href="/overstock">
+                        <i class="fas fa-boxes me-1"></i><B>Overstock</B>
+                    </a>
+                    <a class="nav-link {% if active == 'understock' %}active fw-bold{% endif %}" href="/understock">
+                        <i class="fas fa-exclamation-triangle me-1"></i><B>Understock</B>
+                    </a>
+                    <a class="nav-link {% if active == 'cities' %}active fw-bold{% endif %}" href="/cities">
+                        <i class="fas fa-city me-1"></i><B>Cities</B>
+                    </a>
+                    
+                    
+                    {% if current_user.role == 'admin' %}
+                        <a class="nav-link {% if active == 'admin' %}active fw-bold{% endif %}" href="/admin/stores">
+                            <i class="fas fa-store me-1"></i><B>Stores (897)</B>
+                        </a>
+                        <a class="nav-link {% if active == 'users' %}active fw-bold{% endif %}" href="/admin/users">
+                            <i class="fas fa-users-cog me-1"></i><B>Users</B>
+                        </a>
+                        <a class="nav-link {% if active == 'history' %}active fw-bold{% endif %}" href="/history">
+                             <i class="fas fa-history me-1"></i><B>History</B>
+                        </a>
+                         <a class="nav-link {% if active == 'emails' %}active fw-bold{% endif %}" href="/email-status">
+                              <i class="fas fa-envelope me-1"></i><B>Emails</B>
+                        </a>
+                    {% endif %}
+                    
+                    <a class="nav-link" href="/logout">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </a>
+                {% else %}
+                    <a class="nav-link" href="/login">Login</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-5 pt-5">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category=='danger' else category }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
+
+    <!-- 🔥 DARK MODE TOGGLE SCRIPT -->
+    <script>
+        const themeToggle = document.getElementById('theme-toggle');
+        const html = document.documentElement;
+        const currentTheme = localStorage.getItem('theme') || '{{ session.get("theme", "light") }}';
+        
+        // Set initial theme
+        html.setAttribute('data-theme', currentTheme);
+        updateIcon(currentTheme);
+        
+        themeToggle.addEventListener('click', function() {
+            const newTheme = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateIcon(newTheme);
+            
+            // Save to Flask session
+            fetch('/toggle-theme', {method: 'GET'});
+        });
+        
+        function updateIcon(theme) {
+            const icon = themeToggle.querySelector('i');
+            icon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            themeToggle.classList.toggle('btn-outline-light', theme === 'light');
+            themeToggle.classList.toggle('btn-outline-dark', theme === 'dark');
+        }
+    </script>
+    <!-- 🔥 RETAILBUDDY - PERFECT (Put BEFORE </body>) -->
+<!-- 🔥 RETAILBUDDY - FIXED CLOSE + TOGGLE (Replace entire bot section) -->
+<style>
+#smartbot-container{position:fixed!important;bottom:30px!important;right:30px!important;z-index:99999!important;}
+#smartbot-toggle{width:70px!important;height:70px!important;border-radius:50%!important;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%)!important;color:#fff!important;cursor:pointer!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:30px!important;box-shadow:0 10px 30px rgba(102,126,234,.6)!important;transition:all .3s ease!important;}
+#smartbot-chat{position:absolute!important;bottom:85px!important;right:0!important;background:#fff!important;border-radius:24px!important;box-shadow:0 25px 60px rgba(0,0,0,.4)!important;width:380px!important;height:500px!important;display:flex!important;flex-direction:column!important;transform:translateY(20px);opacity:0;transition:all .3s ease!important;}
+#smartbot-chat.open{transform:translateY(0)!important;opacity:1!important;}
+#smartbot-messages{flex:1!important;overflow-y:auto!important;padding:20px!important;background:#f8f9fa!important;scrollbar-width:thin!important;}
+.ai-msg{background:linear-gradient(135deg,#667eea,#764ba2)!important;color:#fff!important;border-radius:20px!important;padding:16px!important;margin:8px 0!important;box-shadow:0 4px 15px rgba(102,126,234,.3)!important;line-height:1.6!important;}
+.user-msg{background:#e3f2fd!important;color:#1e3a8a!important;border-radius:20px 20px 5px 20px!important;padding:14px 16px!important;margin:8px 0 8px auto!important;max-width:80%!important;display:inline-block!important;}
+#smartbot-close{cursor:pointer!important;font-size:28px!important;font-weight:300!important;padding:5px!important;display:inline-block!important;line-height:1!important;transition:color .2s!important;}
+#smartbot-close:hover{color:#ff6b6b!important;}
+</style>
+
+<div id="smartbot-container">
+    <div id="smartbot-toggle" title="RetailBuddy AI">🤖</div>
+    <div id="smartbot-chat">
+        <div style="background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:20px;display:flex;justify-content:space-between;align-items:center;">
+            <strong style="font-size:18px;">🤖 RetailBuddy</strong>
+            <span id="smartbot-close">×</span>
+        </div>
+        <div id="smartbot-messages"></div>
+        <div style="padding:20px;border-top:1px solid #e0e6ed;background:#fff;">
+            <input id="smartbot-input" class="form-control" placeholder="Ask: stores in pune? products?" style="border-radius:25px;padding:12px 20px;border:2px solid #e0e6ed;">
+            <button class="btn btn-primary px-4 ms-2 mt-2 w-100" onclick="sendMsg()" style="border-radius:25px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;font-weight:600;">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let hasGreeted=false;
+document.addEventListener('DOMContentLoaded',()=>{
+    const toggle=document.getElementById('smartbot-toggle');
+    const chat=document.getElementById('smartbot-chat');
+    const close=document.getElementById('smartbot-close');
+    
+    toggle.onclick=()=>{
+        chat.classList.add('open');
+        if(!hasGreeted){
+            setTimeout(()=>addMsg('🤖 RetailBuddy','👋 Hi! Type <strong>help</strong> for commands!',true),300);
+            hasGreeted=true;
+        }
+    };
+    
+    close.onclick=()=>{
+        chat.classList.remove('open');
+    };
+});
+
+// 🔥 UPDATED sendMsg() WITH REDIRECT
+async function sendMsg(){
+    const input=document.getElementById('smartbot-input');
+    const q=input.value.trim();
+    if(!q)return;
+    addMsg('You',q,false);
+    input.value='';
+    
+    try{
+        const res=await fetch('/ai',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'q='+encodeURIComponent(q)});
+        const data=await res.json();
+        
+        // CHECK FOR REDIRECT 🚀
+        if(data.redirect){
+            window.location.href = data.redirect;
+            return;
+        }
+        
+        addMsg('🤖 RetailBuddy',data.response,true);
+    }catch(e){
+        addMsg('🤖 RetailBuddy','Sorry, try again!',true);
+    }
+    
+    document.getElementById('smartbot-messages').scrollTop = document.getElementById('smartbot-messages').scrollHeight;
+}
+
+function addMsg(sender,text,isAI){
+    const msgs=document.getElementById('smartbot-messages');
+    const div=document.createElement('div');
+    div.className=isAI?'ai-msg':'user-msg';
+    div.innerHTML=`${text.replace(/\n/g,'<br>')}`;
+    msgs.appendChild(div);
+    msgs.scrollTop=msgs.scrollHeight;
+}
+
+document.getElementById('smartbot-input').addEventListener('keypress',e=>e.key==='Enter'?sendMsg():0);
+</script>
+
+
+</body>
+</html>

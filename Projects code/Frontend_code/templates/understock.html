@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Understock Alerts - SmartStock{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Title + Back button -->
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h1 class="display-5 fw-bold mb-0">
+                🚨 Understock Alerts
+            </h1>
+            <a href="{{ url_for('dashboard') }}"  class="btn glass-btn" style='background:linear-gradient(135deg,#6c757d,#5a6268); color:white; padding:12px 24px; text-decoration:none; border-radius:10px; font-weight:600; box-shadow:0 4px 15px rgba(108,117,125,0.3);'>← Dashboard</a>
+
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+
+            {% if alerts %}
+            <div class="card glass-card shadow-lg">
+                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Critical Understock Items</h5>
+                    <span class="badge bg-light text-danger">
+                        {{ alerts|length }} items
+                    </span>
+                </div>
+
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-danger">
+                                <tr>
+                                    <th>Time</th>
+                                    <th>City</th>
+                                    <th>Store</th>
+                                    <th>Product</th>
+                                    <th class="text-end">Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for alert in alerts %}
+                                <tr>
+                                    <td>{{ alert.timestamp }}</td>
+                                    <td>
+                                        <span class="badge bg-info text-dark">
+                                            {{ alert.city }}
+                                        </span>
+                                    </td>
+                                    <td>{{ alert.store }}</td>
+                                    <td>{{ alert.product }}</td>
+                                    <td class="text-end fw-bold text-danger">
+                                        {{ alert.stock }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            {% else %}
+            <div class="card glass-card shadow-lg">
+                <div class="card-body text-center text-muted py-5">
+                    <h5 class="mb-2">✅ No understock alerts</h5>
+                    <p class="mb-0">All products are currently above the safety stock level.</p>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+{% endblock %}

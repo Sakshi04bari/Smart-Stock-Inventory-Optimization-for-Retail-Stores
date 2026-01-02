@@ -1,0 +1,102 @@
+/* Light Mode (Default) */
+:root {
+    --bg-primary: #f8f9fa;
+    --bg-secondary: #ffffff;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --card-bg: #ffffff;
+    --border-color: #dee2e6;
+    --navbar-bg: #376fc2;
+    --success: #198754;
+    --warning: #ffc107;
+    --danger: #dc3545;
+}
+
+/* Dark Mode */
+[data-theme="dark"] {
+    --bg-primary: #1a1d21;
+    --bg-secondary: #2d3748;
+    --text-primary: #f7fafc;
+    --text-secondary: #a0aec0;
+    --card-bg: #2d3748;
+    --border-color: #4a5568;
+    --navbar-bg: #1a202c;
+    --success: #2ccb76;
+    --warning: #d69e2e;
+    --danger: #e53e3e;
+}
+
+/* Apply theme */
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: all 0.3s ease;
+}
+
+.glass-card {
+    background-color: var(--card-bg) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    backdrop-filter: blur(10px);
+}
+
+.navbar {
+    background-color: var(--navbar-bg) !important;
+}
+
+.table-dark {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+}
+
+.badge {
+    color: var(--text-primary);
+}
+
+.card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.btn-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.text-muted {
+    color: var(--text-secondary) !important;
+}
+/* ========================================
+   DASHBOARD TABLE TEXT FIX (Black → Grey)
+======================================== */
+
+/* LIGHT MODE - Table Headers (Original Blue) */
+.table-dark th {
+    background: linear-gradient(90deg, #0d6efd, #6481df) !important;
+    color: #ffffff !important;  /* White text on blue */
+    font-weight: 600;
+}
+
+/* DARK MODE - Table Headers (Dark Blue + Light Grey Text) */
+[data-theme="dark"] .table-dark th {
+    background: linear-gradient(90deg, #546eb6, #6c84d3) !important;
+    color: #e2e8f0 !important;  /* Light Grey text */
+    font-weight: 600;
+}
+
+/* TABLE CELLS - Always Readable */
+.table td {
+    color: var(--text-primary) !important;
+}
+
+/* DARK MODE - Table Rows */
+[data-theme="dark"] .table td {
+    color: #f1f5f9 !important;  /* Very light grey */
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* LIGHT MODE - Table Rows */
+.table td {
+    color: #374151 !important;  /* Dark grey */
+}
